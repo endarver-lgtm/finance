@@ -1,0 +1,31 @@
+{% macro money(amount) %}{{ "%.2f"|format(amount|float) }} {{ currency }}{% endmacro %}
+
+{% macro period_switcher(periods, current, base_url) %}
+<div class="period-switcher">
+  {% for key, label in periods.items() %}
+  <a href="{{ base_url }}?period={{ key }}" class="period-btn {% if key == current %}active{% endif %}">{{ label }}</a>
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro flash_messages() %}
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+  <div class="flash-list">
+    {% for cat, msg in messages %}
+    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    {% endfor %}
+  </div>
+  {% endif %}
+{% endwith %}
+{% endmacro %}
+
+{% macro empty_state(title, hint, btn_label=None, btn_action=None) %}
+<div class="empty-state">
+  <p class="empty-title">{{ title }}</p>
+  <p class="empty-hint">{{ hint }}</p>
+  {% if btn_label %}
+  <button type="button" class="btn btn-primary" {% if btn_action %}data-open="{{ btn_action }}"{% endif %}>{{ btn_label }}</button>
+  {% endif %}
+</div>
+{% endmacro %}

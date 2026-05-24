@@ -1,0 +1,125 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import money, period_switcher, empty_state %}
+
+{% block title %}Приходы — Финансы{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1>Приходы</h1>
+  <div class="header-actions">
+    {{ period_switcher(periods, period, url_for('income.index')) }}
+    <button type="button" class="btn btn-secondary" data-open="modal-one-time">Разовый доход</button>
+    <button type="button" class="btn btn-primary" data-open="modal-add-source">Добавить источник</button>
+  </div>
+</header>
+
+{% if sources %}
+<div class="cards-grid">
+  {% for s in sources %}
+  <article class="card source-card">
+    <div class="card-top">
+      <h3>{{ s.name }}</h3>
+      <span class="badge {% if s.status == 'received' %}badge-ok{% elif s.status == 'partial' %}badge-pending{% else %}badge-muted{% endif %}">
+        {% if s.status == 'received' %}Получено{% elif s.status == 'partial' %}Частично{% else %}Ожидается{% endif %}
+      </span>
+    </div>
+    <p class="muted">{{ type_labels[s.type] }} · {{ freq_labels[s.frequency] }}</p>
+    <div class="source-stats">
+      <div>
+        <span class="stat-label">План</span>
+        <span class="stat-value">{{ money(s.planned_period) }}</span>
+      </div>
+      <div>
+        <span class="stat-label">Факт</span>
+        <span class="stat-value text-accent">{{ money(s.fact) }}</span>
+      </div>
+    </div>
+    {% if s.active %}
+    <button type="button" class="btn btn-primary btn-block" data-open="modal-receive-{{ s.id }}">Отметить получение</button>
+    {% endif %}
+
+    <div class="modal" id="modal-receive-{{ s.id }}" aria-hidden="true">
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-dialog">
+        <h3>Получение — {{ s.name }}</h3>
+        <form method="post" action="{{ url_for('income.add_entry') }}">
+          <input type="hidden" name="source_id" value="{{ s.id }}">
+          <input type="hidden" name="period" value="{{ period }}">
+          <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+          <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
+          <label>Комментарий <input type="text" name="comment"></label>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+{{ empty_state('Нет источников дохода', 'Добавьте зарплату, фриланс или другой регулярный доход', 'Добавить источник', 'modal-add-source') }}
+{% endif %}
+
+<article class="card chart-card section-chart">
+  <h2>План vs факт по месяцам</h2>
+  <canvas id="incomePageChart" height="180"></canvas>
+</article>
+
+<div class="modal" id="modal-add-source" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-dialog">
+    <h3>Новый источник</h3>
+    <form method="post" action="{{ url_for('income.add_source') }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <label>Название <input type="text" name="name" required></label>
+      <label>Тип
+        <select name="type">
+          <option value="regular">Регулярный</option>
+          <option value="one_time">Разовый</option>
+        </select>
+      </label>
+      <label>Плановая сумма <input type="number" name="planned_amount" step="0.01" required></label>
+      <label>Периодичность
+        <select name="frequency">
+          <option value="weekly">Еженедельно</option>
+          <option value="monthly" selected>Ежемесячно</option>
+          <option value="one_time">Разово</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="modal" id="modal-one-time" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-dialog">
+    <h3>Разовый доход</h3>
+    <form method="post" action="{{ url_for('income.add_one_time') }}">
+      <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+      <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
+      <label>Комментарий <input type="text" name="comment" placeholder="Например: продажа вещи"></label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.incomeChart = {
+  labels: {{ chart.labels | tojson }},
+  plan: {{ chart.plan | tojson }},
+  fact: {{ chart.fact | tojson }}
+};
+</script>
+<script src="{{ url_for('static', filename='js/income.js') }}" defer></script>
+{% endblock %}

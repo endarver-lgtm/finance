@@ -1,0 +1,100 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import money, empty_state %}
+
+{% block title %}Накопления — Финансы{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1>Накопления</h1>
+  <button type="button" class="btn btn-primary" data-open="modal-add-goal">Добавить цель</button>
+</header>
+
+{% set has_goals = grouped.values() | map('length') | sum > 0 %}
+
+{% if has_goals %}
+{% for type_key, group_title in type_groups.items() %}
+{% if grouped[type_key] %}
+<section class="goal-section">
+  <h2>{{ group_title }}</h2>
+  <div class="cards-grid">
+    {% for g in grouped[type_key] %}
+    <article class="card goal-card">
+      <h3>{{ g.name }}</h3>
+      {% if g.deadline %}
+      <p class="muted">Дедлайн: {{ g.deadline.split('-')[2] }}.{{ g.deadline.split('-')[1] }}.{{ g.deadline.split('-')[0] }}</p>
+      {% endif %}
+      <div class="goal-stats">
+        <div><span class="stat-label">Цель</span><span class="stat-value">{{ money(g.target_amount) }}</span></div>
+        <div><span class="stat-label">Накоплено</span><span class="stat-value text-accent">{{ money(g.saved) }}</span></div>
+        <div><span class="stat-label">Осталось</span><span class="stat-value">{{ money(g.remaining) }}</span></div>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill ok" style="width: {{ g.pct }}%"></div>
+      </div>
+      <p class="pct-label">{{ g.pct }}%</p>
+      <button type="button" class="btn btn-primary btn-block" data-open="modal-deposit-{{ g.id }}">Пополнить</button>
+
+      {% if g.history %}
+      <details class="history-details">
+        <summary>История пополнений</summary>
+        <ul class="history-list">
+          {% for h in g.history %}
+          <li>
+            <span>{{ h.date.split('-')[2] }}.{{ h.date.split('-')[1] }}.{{ h.date.split('-')[0] }}</span>
+            <span>{{ money(h.amount) }}</span>
+            {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
+
+      <div class="modal" id="modal-deposit-{{ g.id }}" aria-hidden="true">
+        <div class="modal-backdrop" data-close></div>
+        <div class="modal-dialog">
+          <h3>Пополнение — {{ g.name }}</h3>
+          <form method="post" action="{{ url_for('savings.add_entry') }}">
+            <input type="hidden" name="goal_id" value="{{ g.id }}">
+            <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+            <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
+            <label>Комментарий <input type="text" name="comment"></label>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+              <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+{% endfor %}
+{% else %}
+{{ empty_state('Нет целей', 'Добавьте хотелку, резерв или крупную цель', 'Добавить цель', 'modal-add-goal') }}
+{% endif %}
+
+<div class="modal" id="modal-add-goal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-dialog">
+    <h3>Новая цель</h3>
+    <form method="post" action="{{ url_for('savings.add_goal') }}">
+      <label>Название <input type="text" name="name" required></label>
+      <label>Тип
+        <select name="type">
+          <option value="want">Хотелка</option>
+          <option value="reserve">Резерв</option>
+          <option value="big">Крупная цель</option>
+        </select>
+      </label>
+      <label>Целевая сумма <input type="number" name="target_amount" step="0.01" required></label>
+      <label>Дедлайн (необязательно) <input type="date" name="deadline"></label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

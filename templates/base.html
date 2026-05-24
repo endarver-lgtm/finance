@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Финансы{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  {% from 'macros.html' import flash_messages %}
+  {% set nav_items = [
+    ('dashboard.index', 'Дашборд', 'dashboard'),
+    ('income.index', 'Приходы', 'income'),
+    ('budget.index', 'Бюджет', 'budget'),
+    ('savings.index', 'Накопления', 'savings'),
+    ('history.index', 'История', 'history'),
+  ] %}
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="logo">Finance</div>
+      <nav class="nav">
+        {% for endpoint, label, icon in nav_items %}
+        <a href="{{ url_for(endpoint) }}" class="nav-item {% if request.endpoint == endpoint %}active{% endif %}">
+          <span class="nav-icon nav-icon-{{ icon }}"></span>
+          <span class="nav-label">{{ label }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+      <a href="{{ url_for('settings.index') }}" class="nav-settings">Настройки</a>
+    </aside>
+
+    <nav class="bottom-nav">
+      {% for endpoint, label, icon in nav_items %}
+      <a href="{{ url_for(endpoint) }}" class="bottom-nav-item {% if request.endpoint == endpoint %}active{% endif %}">
+        <span class="nav-icon nav-icon-{{ icon }}"></span>
+        <span>{{ label }}</span>
+      </a>
+      {% endfor %}
+    </nav>
+
+    <main class="main">
+      {{ flash_messages() }}
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

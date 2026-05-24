@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import money, period_switcher, empty_state %}
+
+{% block title %}Бюджет — Финансы{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1>Бюджет</h1>
+  <div class="header-actions">
+    {{ period_switcher(periods, period, url_for('budget.index')) }}
+    <button type="button" class="btn btn-primary" data-open="modal-add-category">Добавить категорию</button>
+  </div>
+</header>
+
+{% if categories %}
+<div class="cards-grid">
+  {% for c in categories %}
+  <article class="card budget-card">
+    <h3>{{ c.name }}</h3>
+    <p class="muted">План на {{ 'неделю' if period == 'week' else 'месяц' }}: {{ money(c.planned_period) }}</p>
+    <div class="budget-stats">
+      <span>Потрачено <strong>{{ money(c.spent) }}</strong></span>
+      <span>Осталось <strong class="text-accent">{{ money(c.remaining) }}</strong></span>
+      <span>{{ c.pct }}% использовано</span>
+    </div>
+    <div class="progress-track">
+      <div class="progress-fill {{ c.color }}" style="width: {{ c.pct }}%"></div>
+    </div>
+    <button type="button" class="btn btn-primary btn-block" data-open="modal-spend-{{ c.id }}">Списать</button>
+
+    {% if c.history %}
+    <details class="history-details">
+      <summary>История списаний</summary>
+      <ul class="history-list">
+        {% for h in c.history %}
+        <li>
+          <span>{{ h.date.split('-')[2] }}.{{ h.date.split('-')[1] }}.{{ h.date.split('-')[0] }}</span>
+          <span>{{ money(h.amount) }}</span>
+          {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </details>
+    {% endif %}
+
+    <div class="modal" id="modal-spend-{{ c.id }}" aria-hidden="true">
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-dialog">
+        <h3>Списание — {{ c.name }}</h3>
+        <form method="post" action="{{ url_for('budget.add_entry') }}">
+          <input type="hidden" name="category_id" value="{{ c.id }}">
+          <input type="hidden" name="period" value="{{ period }}">
+          <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+          <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
+          <label>Комментарий <input type="text" name="comment" placeholder="Блок трат за несколько дней"></label>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+{{ empty_state('Нет категорий', 'Создайте конверты: продукты, транспорт, развлечения', 'Добавить категорию', 'modal-add-category') }}
+{% endif %}
+
+<div class="modal" id="modal-add-category" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-dialog">
+    <h3>Новая категория</h3>
+    <form method="post" action="{{ url_for('budget.add_category') }}">
+      <input type="hidden" name="view_period" value="{{ period }}">
+      <label>Название <input type="text" name="name" required></label>
+      <label>Плановая сумма <input type="number" name="planned_amount" step="0.01" required></label>
+      <label>Период
+        <select name="period">
+          <option value="week">Неделя</option>
+          <option value="month">Месяц</option>
+        </select>
+      </label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-primary">Добавить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

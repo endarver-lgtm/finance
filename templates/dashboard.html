@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import money, period_switcher, empty_state %}
+
+{% block title %}Дашборд — Финансы{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <h1>Дашборд</h1>
+  {{ period_switcher(periods, period, url_for('dashboard.index')) }}
+</header>
+
+<section class="kpi-grid">
+  <article class="card kpi-card">
+    <span class="kpi-label">Приход</span>
+    <div class="kpi-value">{{ money(kpis.income_actual) }}</div>
+    <span class="kpi-sub">план {{ money(kpis.income_plan) }}</span>
+  </article>
+  <article class="card kpi-card">
+    <span class="kpi-label">Расходы</span>
+    <div class="kpi-value">{{ money(kpis.expense_actual) }}</div>
+    <span class="kpi-sub">план {{ money(kpis.expense_plan) }}</span>
+  </article>
+  <article class="card kpi-card">
+    <span class="kpi-label">Свободно</span>
+    <div class="kpi-value {% if kpis.free < 0 %}text-danger{% else %}text-accent{% endif %}">{{ money(kpis.free) }}</div>
+    <span class="kpi-sub">приход − расходы</span>
+  </article>
+  <article class="card kpi-card">
+    <span class="kpi-label">Накоплено</span>
+    <div class="kpi-value">{{ money(kpis.saved) }}</div>
+    <span class="kpi-sub">всего по целям</span>
+  </article>
+</section>
+
+<section class="charts-grid">
+  <article class="card chart-card">
+    <h2>Расходы по категориям</h2>
+    {% if expense_chart %}
+    <canvas id="expenseChart" height="200"></canvas>
+    {% else %}
+    {{ empty_state('Нет расходов', 'Добавьте категории в бюджете и спишите траты') }}
+    {% endif %}
+  </article>
+  <article class="card chart-card">
+    <h2>Приход: план vs факт</h2>
+    <canvas id="incomeChart" height="200"></canvas>
+  </article>
+</section>
+
+<section class="two-col">
+  <article class="card">
+    <h2>Конверты — неделя</h2>
+    {% if envelopes %}
+    <ul class="envelope-list">
+      {% for e in envelopes %}
+      <li class="envelope-item">
+        <div class="envelope-head">
+          <span>{{ e.name }}</span>
+          <span>{{ money(e.spent) }} / {{ money(e.planned) }}</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill {% if e.pct >= 90 %}danger{% elif e.pct >= 70 %}warning{% else %}ok{% endif %}" style="width: {{ e.pct }}%"></div>
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {{ empty_state('Нет конвертов', 'Создайте категории в разделе Бюджет') }}
+    {% endif %}
+  </article>
+
+  <article class="card">
+    <h2>Ближайшие приходы</h2>
+    {% if upcoming %}
+    <ul class="upcoming-list">
+      {% for u in upcoming %}
+      <li class="upcoming-item">
+        <div>
+          <strong>{{ u.name }}</strong>
+          <span class="muted">{{ money(u.fact) }} / {{ money(u.planned) }}</span>
+        </div>
+        <span class="badge {% if u.status == 'received' %}badge-ok{% else %}badge-pending{% endif %}">
+          {% if u.status == 'received' %}Получено{% else %}Ожидается{% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {{ empty_state('Нет источников', 'Добавьте источники дохода в разделе Приходы') }}
+    {% endif %}
+  </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+window.chartData = {
+  expense: {
+    labels: {{ expense_chart | map(attribute='name') | list | tojson }},
+    values: {{ expense_chart | map(attribute='spent') | list | tojson }}
+  },
+  income: {
+    labels: {{ income_chart.labels | tojson }},
+    plan: {{ income_chart.plan | tojson }},
+    fact: {{ income_chart.fact | tojson }}
+  }
+};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}" defer></script>
+{% endblock %}
