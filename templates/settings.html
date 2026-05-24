@@ -9,10 +9,12 @@
 
 <article class="card settings-card">
   <form method="post">
-    <label>Валюта
-      <input type="text" name="currency" value="{{ currency }}" maxlength="5" placeholder="€">
+    <p class="settings-currency-label">Основная валюта: <strong>BYN</strong> (белорусский рубль)</p>
+    <label>Курс для оценки в долларах
+      <input type="number" name="usd_rate" value="{{ usd_rate }}" step="0.01" min="0.01" required>
     </label>
-    <p class="muted">Отображается рядом со всеми суммами в приложении.</p>
+    <p class="muted">Сколько BYN за 1 USD. Рядом с каждой суммой показывается примерно в $ (≈).</p>
+    <p class="muted">Пример: при курсе 3.27 → 327 BYN ≈ $100</p>
     <button type="submit" class="btn btn-primary">Сохранить</button>
   </form>
 </article>

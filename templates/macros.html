@@ -1,4 +1,9 @@
-{% macro money(amount) %}{{ "%.2f"|format(amount|float) }} {{ currency }}{% endmacro %}
+{% macro money(amount) %}
+<span class="money-pair">
+  <span class="money-byn">{{ "%.2f"|format(amount|float) }} BYN</span>
+  <span class="money-usd">≈ ${{ amount|to_usd }}</span>
+</span>
+{% endmacro %}
 
 {% macro period_switcher(periods, current, base_url) %}
 <div class="period-switcher">

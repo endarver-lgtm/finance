@@ -1,56 +1,38 @@
-from datetime import date
-
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
-from database import get_db, now_iso
-from services.dates import format_date, parse_date, to_iso
-from services.queries import goal_saved
+from services.constants import SAVINGS_TYPE_GROUPS
+from services.forms import parse_entry_fields
+from services.progress import usage_percent
+from services.repository import (
+    create_savings_entry,
+    create_savings_goal,
+    list_savings_entries,
+    list_savings_goals,
+    sum_savings_for_goal,
+)
 
 bp = Blueprint("savings", __name__, url_prefix="/savings")
-
-TYPE_GROUPS = {
-    "want": "Хотелки",
-    "reserve": "Резерв",
-    "big": "Крупные цели",
-}
-TYPE_LABELS = TYPE_GROUPS
 
 
 @bp.route("/")
 def index():
-    with get_db() as conn:
-        goals = conn.execute(
-            "SELECT * FROM savings_goals ORDER BY type, name"
-        ).fetchall()
-
-    grouped = {k: [] for k in TYPE_GROUPS}
-    for g in goals:
-        g = dict(g)
-        saved = goal_saved(g["id"])
+    grouped = {k: [] for k in SAVINGS_TYPE_GROUPS}
+    for g in list_savings_goals():
+        saved = sum_savings_for_goal(g["id"])
         target = float(g["target_amount"])
-        remaining = max(0, target - saved)
-        pct = min(100, round(saved / target * 100, 1)) if target > 0 else 0
-        with get_db() as conn:
-            history = conn.execute(
-                """
-                SELECT * FROM savings_entries
-                WHERE goal_id = %s
-                ORDER BY date DESC, id DESC
-                """,
-                (g["id"],),
-            ).fetchall()
-        g.update({
+        pct = usage_percent(saved, target)
+        grouped[g["type"]].append({
+            **g,
             "saved": saved,
-            "remaining": remaining,
+            "remaining": max(0, target - saved),
             "pct": pct,
-            "history": [dict(h) for h in history],
+            "history": list_savings_entries(g["id"]),
         })
-        grouped[g["type"]].append(g)
 
     return render_template(
         "savings.html",
         grouped=grouped,
-        type_groups=TYPE_GROUPS,
+        type_groups=SAVINGS_TYPE_GROUPS,
     )
 
 
@@ -60,38 +42,25 @@ def add_goal():
     if not name:
         flash("Укажите название цели", "error")
         return redirect(url_for("savings.index"))
-    deadline = request.form.get("deadline", "").strip()
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO savings_goals (name, type, target_amount, deadline, created_at)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (
-                name,
-                request.form.get("type", "want"),
-                float(request.form.get("target_amount") or 0),
-                deadline or None,
-                now_iso(),
-            ),
-        )
+    deadline = request.form.get("deadline", "").strip() or None
+    create_savings_goal(
+        name,
+        request.form.get("type", "want"),
+        float(request.form.get("target_amount") or 0),
+        deadline,
+    )
     flash("Цель добавлена", "success")
     return redirect(url_for("savings.index"))
 
 
 @bp.route("/entry/add", methods=["POST"])
 def add_entry():
-    goal_id = int(request.form.get("goal_id"))
-    amount = float(request.form.get("amount") or 0)
-    d = parse_date(request.form.get("date") or date.today().isoformat())
-    comment = request.form.get("comment", "").strip()
-    with get_db() as conn:
-        conn.execute(
-            """
-            INSERT INTO savings_entries (goal_id, amount, date, comment, created_at)
-            VALUES (%s, %s, %s, %s, %s)
-            """,
-            (goal_id, amount, to_iso(d), comment or None, now_iso()),
-        )
+    amount, entry_date, comment = parse_entry_fields()
+    create_savings_entry(
+        int(request.form.get("goal_id")),
+        amount,
+        entry_date,
+        comment,
+    )
     flash("Пополнение записано", "success")
     return redirect(url_for("savings.index"))

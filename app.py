@@ -4,28 +4,28 @@ from datetime import date
 from flask import Flask
 
 from config import DEFAULT_CURRENCY, SECRET_KEY
-from database import get_setting, init_db
+from db import get_setting, init_db
+from services.currency import to_usd, usd_rate
 
 
 def create_app():
     app = Flask(__name__)
     app.secret_key = SECRET_KEY
-
     init_db()
 
-    from routes.dashboard import bp as dashboard_bp
-    from routes.income import bp as income_bp
     from routes.budget import bp as budget_bp
-    from routes.savings import bp as savings_bp
+    from routes.dashboard import bp as dashboard_bp
     from routes.history import bp as history_bp
+    from routes.income import bp as income_bp
+    from routes.savings import bp as savings_bp
     from routes.settings import bp as settings_bp
 
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(income_bp)
-    app.register_blueprint(budget_bp)
-    app.register_blueprint(savings_bp)
-    app.register_blueprint(history_bp)
-    app.register_blueprint(settings_bp)
+    for bp in (dashboard_bp, income_bp, budget_bp, savings_bp, history_bp, settings_bp):
+        app.register_blueprint(bp)
+
+    @app.template_filter("to_usd")
+    def to_usd_filter(value):
+        return "%.2f" % to_usd(value)
 
     @app.template_filter("db_date")
     def db_date_filter(value):
@@ -40,34 +40,19 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
+        rate = usd_rate()
         return {
             "currency": get_setting("currency", DEFAULT_CURRENCY),
+            "usd_rate": rate,
             "today": date.today(),
         }
 
     return app
 
 
-def _build_app():
-    try:
-        return create_app()
-    except Exception as exc:
-        print("\n[STARTUP ERROR]", exc)
-        print("\nCheck .env:")
-        print("  - Windows: use Session pooler URI (IPv4), NOT db.*.supabase.co (IPv6 only)")
-        print("  - Supabase -> Connect -> copy Session pooler string, port 5432")
-        print("  - password URL-encoded if needed (@ -> %40)")
-        print("  - internet / VPN off\n")
-        raise
-
-
-app = _build_app()
+app = create_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
-    try:
-        app.run(host="127.0.0.1", port=port, debug=debug, use_reloader=debug)
-    except Exception as exc:
-        print("\n[ERROR]", exc)
-        raise
+    app.run(host="127.0.0.1", port=port, debug=debug, use_reloader=debug)

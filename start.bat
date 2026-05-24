@@ -18,27 +18,14 @@ if not exist ".venv\Scripts\python.exe" (
   if errorlevel 1 goto :fail
 )
 
-if not exist ".env" (
-  echo [ERROR] File .env not found.
-  echo.
-  echo   copy .env.example .env
-  echo   notepad .env
-  echo.
-  goto :fail
-)
-
-.venv\Scripts\python.exe -c "import config, os, sys; sys.exit(0 if os.environ.get('DATABASE_URL') else 1)"
-if errorlevel 1 (
-  echo [ERROR] DATABASE_URL is empty in .env
-  goto :fail
-)
-
+if not defined DATABASE_PATH set "DATABASE_PATH=%CD%\finance.db"
 set "FLASK_DEBUG=1"
 set "PORT=5000"
 
 echo.
 echo   Finance tracker
 echo   Open: http://127.0.0.1:%PORT%
+echo   DB:   %DATABASE_PATH%
 echo   Stop: Ctrl+C
 echo.
 

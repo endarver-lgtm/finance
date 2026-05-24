@@ -2,10 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-if [[ ! -f .env ]]; then
-  echo "[ERROR] File .env not found."
-  echo "  cp .env.example .env   # then edit DATABASE_URL"
-  exit 1
+if [[ -f .env ]]; then
+  set -a
+  # shellcheck disable=SC1091
+  source .env
+  set +a
 fi
 
 if command -v python3 >/dev/null 2>&1; then
@@ -33,17 +34,14 @@ else
   "$PIP" install -r requirements.txt
 fi
 
-"$PY" -c "import config, os, sys; sys.exit(0 if os.environ.get('DATABASE_URL') else 1)" || {
-  echo "[ERROR] DATABASE_URL is empty in .env"
-  exit 1
-}
-
+export DATABASE_PATH="${DATABASE_PATH:-${PWD}/finance.db}"
 export FLASK_DEBUG=1
 export PORT=5000
 
 echo
 echo "  Finance tracker"
 echo "  Open: http://127.0.0.1:${PORT}"
+echo "  DB:   ${DATABASE_PATH}"
 echo "  Stop: Ctrl+C"
 echo
 

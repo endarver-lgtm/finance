@@ -20,5 +20,9 @@ def _load_dotenv():
 
 _load_dotenv()
 
+DATABASE_PATH = os.environ.get(
+    "DATABASE_PATH", os.path.join(BASE_DIR, "finance.db")
+)
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me-in-production")
-DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "€")
+DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "BYN")
+DEFAULT_USD_RATE = os.environ.get("USD_RATE", "3.27")

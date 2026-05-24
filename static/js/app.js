@@ -46,6 +46,13 @@
     chartDefaults();
   }
 
+  function moneyLabel(value) {
+    const rate = window.FINANCE?.usdRate || 3.27;
+    const byn = Number(value) || 0;
+    const usd = byn / rate;
+    return `${byn.toFixed(2)} BYN (≈ $${usd.toFixed(2)})`;
+  }
+
   window.financeCharts = {
     bar(ctx, labels, values) {
       return new Chart(ctx, {
@@ -63,9 +70,22 @@
         },
         options: {
           responsive: true,
-          plugins: { legend: { display: false } },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => moneyLabel(ctx.parsed.y),
+              },
+            },
+          },
           scales: {
-            y: { beginAtZero: true, grid: { color: '#f5f5f5' } },
+            y: {
+              beginAtZero: true,
+              grid: { color: '#f5f5f5' },
+              ticks: {
+                callback: (v) => `${v} BYN`,
+              },
+            },
             x: { grid: { display: false } },
           },
         },
@@ -97,9 +117,22 @@
         },
         options: {
           responsive: true,
-          plugins: { legend: { position: 'bottom' } },
+          plugins: {
+            legend: { position: 'bottom' },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${moneyLabel(ctx.parsed.y)}`,
+              },
+            },
+          },
           scales: {
-            y: { beginAtZero: true, grid: { color: '#f5f5f5' } },
+            y: {
+              beginAtZero: true,
+              grid: { color: '#f5f5f5' },
+              ticks: {
+                callback: (v) => `${v} BYN`,
+              },
+            },
             x: { grid: { display: false } },
           },
         },
