@@ -8,7 +8,7 @@ def sum_in_range(table: str, amount_col: str, date_col: str, start: date, end: d
     sql = f"""
         SELECT COALESCE(SUM({amount_col}), 0) AS total
         FROM {table}
-        WHERE {date_col} >= ? AND {date_col} <= ?
+        WHERE {date_col} >= %s AND {date_col} <= %s
     """
     if extra:
         sql += f" AND {extra}"
@@ -121,7 +121,7 @@ def expenses_by_category(start: date, end: date):
             FROM budget_categories c
             LEFT JOIN budget_entries e
               ON e.category_id = c.id
-             AND e.date >= ? AND e.date <= ?
+             AND e.date >= %s AND e.date <= %s
             GROUP BY c.id
             ORDER BY spent DESC, c.name
             """,
@@ -162,7 +162,7 @@ def envelope_progress(period: str = "week", ref: date | None = None):
         planned = category_planned_for_period(c, period)
         spent = sum_in_range(
             "budget_entries", "amount", "date", start, end,
-            "category_id = ?", (c["id"],),
+            "category_id = %s", (c["id"],),
         )
         pct = min(100, round(spent / planned * 100, 1)) if planned > 0 else 0
         result.append({
@@ -194,7 +194,7 @@ def upcoming_income(ref: date | None = None):
                 """
                 SELECT COALESCE(SUM(amount), 0) AS total
                 FROM income_entries
-                WHERE source_id = ? AND date >= ? AND date <= ?
+                WHERE source_id = %s AND date >= %s AND date <= %s
                 """,
                 (s["id"], to_iso(start), to_iso(end)),
             ).fetchone()["total"]
@@ -215,7 +215,7 @@ def upcoming_income(ref: date | None = None):
 def goal_saved(goal_id: int) -> float:
     with get_db() as conn:
         row = conn.execute(
-            "SELECT COALESCE(SUM(amount), 0) AS t FROM savings_entries WHERE goal_id = ?",
+            "SELECT COALESCE(SUM(amount), 0) AS t FROM savings_entries WHERE goal_id = %s",
             (goal_id,),
         ).fetchone()
     return float(row["t"])
@@ -229,10 +229,10 @@ def history_rows(date_from: date | None, date_to: date | None, type_filter: str,
     def in_range_clause(col):
         parts, p = [], []
         if df:
-            parts.append(f"{col} >= ?")
+            parts.append(f"{col} >= %s")
             p.append(df)
         if dt:
-            parts.append(f"{col} <= ?")
+            parts.append(f"{col} <= %s")
             p.append(dt)
         return (" AND ".join(parts), p) if parts else ("1=1", [])
 

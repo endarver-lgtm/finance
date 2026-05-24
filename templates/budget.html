@@ -34,7 +34,7 @@
       <ul class="history-list">
         {% for h in c.history %}
         <li>
-          <span>{{ h.date.split('-')[2] }}.{{ h.date.split('-')[1] }}.{{ h.date.split('-')[0] }}</span>
+          <span>{{ h.date | db_date }}</span>
           <span>{{ money(h.amount) }}</span>
           {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
         </li>

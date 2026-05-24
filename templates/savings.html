@@ -21,7 +21,7 @@
     <article class="card goal-card">
       <h3>{{ g.name }}</h3>
       {% if g.deadline %}
-      <p class="muted">Дедлайн: {{ g.deadline.split('-')[2] }}.{{ g.deadline.split('-')[1] }}.{{ g.deadline.split('-')[0] }}</p>
+      <p class="muted">Дедлайн: {{ g.deadline | db_date }}</p>
       {% endif %}
       <div class="goal-stats">
         <div><span class="stat-label">Цель</span><span class="stat-value">{{ money(g.target_amount) }}</span></div>
@@ -40,7 +40,7 @@
         <ul class="history-list">
           {% for h in g.history %}
           <li>
-            <span>{{ h.date.split('-')[2] }}.{{ h.date.split('-')[1] }}.{{ h.date.split('-')[0] }}</span>
+            <span>{{ h.date | db_date }}</span>
             <span>{{ money(h.amount) }}</span>
             {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
           </li>

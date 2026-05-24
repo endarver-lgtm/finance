@@ -37,14 +37,14 @@ def index():
         planned = category_planned_for_period(c, period)
         spent = sum_in_range(
             "budget_entries", "amount", "date", start, end,
-            "category_id = ?", (c["id"],),
+            "category_id = %s", (c["id"],),
         )
         pct = min(100, round(spent / planned * 100, 1)) if planned > 0 else 0
         with get_db() as conn:
             history = conn.execute(
                 """
                 SELECT * FROM budget_entries
-                WHERE category_id = ?
+                WHERE category_id = %s
                 ORDER BY date DESC, id DESC
                 """,
                 (c["id"],),
@@ -77,7 +77,7 @@ def add_category():
         conn.execute(
             """
             INSERT INTO budget_categories (name, planned_amount, period, created_at)
-            VALUES (?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s)
             """,
             (
                 name,
@@ -100,7 +100,7 @@ def add_entry():
         conn.execute(
             """
             INSERT INTO budget_entries (category_id, amount, date, comment, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (category_id, amount, to_iso(d), comment or None, now_iso()),
         )

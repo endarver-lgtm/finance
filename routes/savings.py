@@ -34,7 +34,7 @@ def index():
             history = conn.execute(
                 """
                 SELECT * FROM savings_entries
-                WHERE goal_id = ?
+                WHERE goal_id = %s
                 ORDER BY date DESC, id DESC
                 """,
                 (g["id"],),
@@ -65,7 +65,7 @@ def add_goal():
         conn.execute(
             """
             INSERT INTO savings_goals (name, type, target_amount, deadline, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (
                 name,
@@ -89,7 +89,7 @@ def add_entry():
         conn.execute(
             """
             INSERT INTO savings_entries (goal_id, amount, date, comment, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (goal_id, amount, to_iso(d), comment or None, now_iso()),
         )

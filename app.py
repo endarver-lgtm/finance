@@ -27,6 +27,17 @@ def create_app():
     app.register_blueprint(history_bp)
     app.register_blueprint(settings_bp)
 
+    @app.template_filter("db_date")
+    def db_date_filter(value):
+        if value is None:
+            return ""
+        if hasattr(value, "strftime"):
+            return value.strftime("%d.%m.%Y")
+        parts = str(value).split("-")
+        if len(parts) == 3:
+            return f"{parts[2]}.{parts[1]}.{parts[0]}"
+        return str(value)
+
     @app.context_processor
     def inject_globals():
         return {
@@ -37,8 +48,26 @@ def create_app():
     return app
 
 
-app = create_app()
+def _build_app():
+    try:
+        return create_app()
+    except Exception as exc:
+        print("\n[STARTUP ERROR]", exc)
+        print("\nCheck .env:")
+        print("  - Windows: use Session pooler URI (IPv4), NOT db.*.supabase.co (IPv6 only)")
+        print("  - Supabase -> Connect -> copy Session pooler string, port 5432")
+        print("  - password URL-encoded if needed (@ -> %40)")
+        print("  - internet / VPN off\n")
+        raise
+
+
+app = _build_app()
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True)
+    debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
+    try:
+        app.run(host="127.0.0.1", port=port, debug=debug, use_reloader=debug)
+    except Exception as exc:
+        print("\n[ERROR]", exc)
+        raise

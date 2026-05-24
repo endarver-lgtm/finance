@@ -1,37 +1,49 @@
 # Финансовый трекер
 
-Python + Flask + SQLite. Дизайн: Inter, карточки, Chart.js. Деплой на Railway.
+Python + Flask + **PostgreSQL (Supabase)**. Chart.js, деплой на Railway.
+
+## Переменные окружения
+
+Скопируйте `.env.example` в `.env`:
+
+```env
+DATABASE_URL=postgresql://postgres:PASSWORD@db.PROJECT.supabase.co:5432/postgres
+SECRET_KEY=your-random-secret
+DEFAULT_CURRENCY=€
+```
+
+В Supabase: **Project Settings → Database → Connection string** (URI).  
+Для Railway добавьте те же переменные в **Variables**.
 
 ## Локальный запуск
 
-```bash
-cd finance
-python -m venv .venv
-.venv\Scripts\activate   # Windows
-pip install -r requirements.txt
-python app.py
+```bat
+start.bat
 ```
 
-Откройте http://127.0.0.1:5000
+```bash
+chmod +x start.sh && ./start.sh
+```
+
+Откройте http://127.0.0.1:5000 — таблицы создаются при первом запуске (`init_db`).
 
 ## Railway
 
 ```bash
-railway login
-railway init
+railway variables set DATABASE_URL="postgresql://..."
+railway variables set SECRET_KEY="..."
 railway up
 ```
 
-Переменные окружения (опционально):
-
-- `SECRET_KEY` — секрет Flask
-- `DATABASE_PATH` — путь к SQLite (на Railway лучше том `/data/finance.db`)
+`Procfile`: `web: gunicorn app:app`
 
 ## Страницы
 
-- **/** — дашборд (KPI, графики, конверты, приходы)
-- **/income** — источники и поступления
-- **/budget** — конверты (неделя / месяц)
-- **/savings** — цели накоплений
-- **/history** — единая история с фильтрами
-- **/settings** — валюта (по умолчанию €)
+| URL | Раздел |
+|-----|--------|
+| `/` | Дашборд |
+| `/income` | Приходы |
+| `/budget` | Бюджет |
+| `/savings` | Накопления |
+| `/history` | История |
+| `/settings` | Валюта |

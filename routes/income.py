@@ -32,7 +32,7 @@ def index():
             row = conn.execute(
                 """
                 SELECT COALESCE(SUM(amount), 0) AS t FROM income_entries
-                WHERE source_id = ? AND date >= ? AND date <= ?
+                WHERE source_id = %s AND date >= %s AND date <= %s
                 """,
                 (s["id"], to_iso(start), to_iso(end)),
             ).fetchone()
@@ -71,7 +71,7 @@ def add_source():
         conn.execute(
             """
             INSERT INTO income_sources (name, type, planned_amount, frequency, active, created_at)
-            VALUES (?, ?, ?, ?, 1, ?)
+            VALUES (%s, %s, %s, %s, 1, %s)
             """,
             (
                 name,
@@ -95,7 +95,7 @@ def add_entry():
         conn.execute(
             """
             INSERT INTO income_entries (source_id, amount, date, comment, created_at)
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s)
             """,
             (int(source_id) if source_id else None, amount, to_iso(d), comment or None, now_iso()),
         )
@@ -112,7 +112,7 @@ def add_one_time():
         conn.execute(
             """
             INSERT INTO income_entries (source_id, amount, date, comment, created_at)
-            VALUES (NULL, ?, ?, ?, ?)
+            VALUES (NULL, %s, %s, %s, %s)
             """,
             (amount, to_iso(d), comment or None, now_iso()),
         )
