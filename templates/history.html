@@ -51,7 +51,7 @@
         <td><span class="kind kind-{{ r.kind }}">{{ r.kind_label }}</span></td>
         <td>{{ r.label }}</td>
         <td class="{% if r.kind == 'income' %}text-accent{% elif r.kind == 'expense' %}text-danger{% endif %}">
-          {% if r.kind == 'expense' %}−{% else %}+{% endif %}{{ money(r.amount) }}
+          {% if r.kind == 'expense' %}−{% else %}+{% endif %}{{ money(r.amount, r.currency) }}
         </td>
         <td class="muted">{{ r.comment or '—' }}</td>
       </tr>
@@ -63,10 +63,10 @@
         <td></td>
         <td colspan="2">
           <span class="totals-inline">
-            Приход +{{ money(totals.income) }} ·
-            Расход −{{ money(totals.expense) }} ·
-            Накопления +{{ money(totals.savings) }} ·
-            Баланс {{ money(totals.net) }}
+            Приход +{{ money(totals.income, totals.currency, false) }} ·
+            Расход −{{ money(totals.expense, totals.currency, false) }} ·
+            Накопления +{{ money(totals.savings, totals.currency, false) }} ·
+            Баланс {{ money(totals.net, totals.currency, false) }}
           </span>
         </td>
       </tr>

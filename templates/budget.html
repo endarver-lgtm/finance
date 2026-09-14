@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import money, period_switcher, empty_state %}
+{% from 'macros.html' import money, currency_select, period_switcher, empty_state with context %}
 
 {% block title %}Бюджет — Финансы{% endblock %}
 
@@ -17,10 +17,10 @@
   {% for c in categories %}
   <article class="card budget-card">
     <h3>{{ c.name }}</h3>
-    <p class="muted">План на {{ 'неделю' if period == 'week' else 'месяц' }}: {{ money(c.planned_period) }}</p>
+    <p class="muted">План на {{ 'неделю' if period == 'week' else 'месяц' }}: {{ money(c.planned_period, c.planned_currency) }}</p>
     <div class="budget-stats">
-      <span>Потрачено <strong>{{ money(c.spent) }}</strong></span>
-      <span>Осталось <strong class="text-accent">{{ money(c.remaining) }}</strong></span>
+      <span>Потрачено <strong>{{ money(c.spent, c.spent_currency) }}</strong></span>
+      <span>Осталось <strong class="text-accent">{{ money(c.remaining, 'BYN') }}</strong></span>
       <span>{{ c.pct }}% использовано</span>
     </div>
     <div class="progress-track">
@@ -35,7 +35,7 @@
         {% for h in c.history %}
         <li>
           <span>{{ h.date | db_date }}</span>
-          <span>{{ money(h.amount) }}</span>
+          <span>{{ money(h.amount, h.currency|default('BYN')) }}</span>
           {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
         </li>
         {% endfor %}
@@ -51,6 +51,7 @@
           <input type="hidden" name="category_id" value="{{ c.id }}">
           <input type="hidden" name="period" value="{{ period }}">
           <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+          {{ currency_select() }}
           <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
           <label>Комментарий <input type="text" name="comment" placeholder="Блок трат за несколько дней"></label>
           <div class="modal-actions">
@@ -75,6 +76,7 @@
       <input type="hidden" name="view_period" value="{{ period }}">
       <label>Название <input type="text" name="name" required></label>
       <label>Плановая сумма <input type="number" name="planned_amount" step="0.01" required></label>
+      {{ currency_select() }}
       <label>Период
         <select name="period">
           <option value="week">Неделя</option>

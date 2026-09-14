@@ -12,7 +12,7 @@ def main():
     cmd = sys.argv[1].lower()
     if cmd == "reset":
         reset_db()
-        print("База очищена. Файл finance.db пересоздан с настройками BYN.")
+        print("База очищена. Таблицы в Postgres пересозданы с настройками BYN.")
         return
     print(f"Неизвестная команда: {cmd}")
     sys.exit(1)

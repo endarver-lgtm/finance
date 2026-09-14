@@ -13,7 +13,7 @@
   <article class="card kpi-card">
     <span class="kpi-label">Приход</span>
     <div class="kpi-value">{{ money(kpis.income_actual) }}</div>
-    <span class="kpi-sub">план {{ money(kpis.income_plan) }}</span>
+    <span class="kpi-sub">план {{ money(kpis.income_plan, 'BYN', false) }}</span>
   </article>
   <article class="card kpi-card">
     <span class="kpi-label">Расходы</span>
@@ -56,7 +56,7 @@
       <li class="envelope-item">
         <div class="envelope-head">
           <span>{{ e.name }}</span>
-          <span>{{ money(e.spent) }} / {{ money(e.planned) }}</span>
+          <span>{{ money(e.spent, 'BYN', false) }} / {{ money(e.planned, e.planned_currency) }}</span>
         </div>
         <div class="progress-track">
           <div class="progress-fill {% if e.pct >= 90 %}danger{% elif e.pct >= 70 %}warning{% else %}ok{% endif %}" style="width: {{ e.pct }}%"></div>
@@ -74,10 +74,10 @@
     {% if upcoming %}
     <ul class="upcoming-list">
       {% for u in upcoming %}
-      <li class="upcoming-item">
+      <li class="upcoming-item upcoming-item--regular">
         <div>
           <strong>{{ u.name }}</strong>
-          <span class="muted">{{ money(u.fact) }} / {{ money(u.planned) }}</span>
+          <span class="muted">{{ money(u.fact, 'BYN', false) }} / {{ money(u.planned, u.planned_currency) }}</span>
         </div>
         <span class="badge {% if u.status == 'received' %}badge-ok{% else %}badge-pending{% endif %}">
           {% if u.status == 'received' %}Получено{% else %}Ожидается{% endif %}

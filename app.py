@@ -5,7 +5,8 @@ from flask import Flask
 
 from config import DEFAULT_CURRENCY, SECRET_KEY
 from db import get_setting, init_db
-from services.currency import to_usd, usd_rate
+from services.constants import BASE_CURRENCY, CURRENCIES
+from services.currency import to_byn, to_usd, usd_rate
 
 
 def create_app():
@@ -23,9 +24,13 @@ def create_app():
     for bp in (dashboard_bp, income_bp, budget_bp, savings_bp, history_bp, settings_bp):
         app.register_blueprint(bp)
 
+    @app.template_filter("to_byn")
+    def to_byn_filter(amount, currency=BASE_CURRENCY):
+        return "%.2f" % to_byn(amount, currency)
+
     @app.template_filter("to_usd")
-    def to_usd_filter(value):
-        return "%.2f" % to_usd(value)
+    def to_usd_filter(amount, currency=BASE_CURRENCY):
+        return "%.2f" % to_usd(amount, currency)
 
     @app.template_filter("db_date")
     def db_date_filter(value):
@@ -40,10 +45,11 @@ def create_app():
 
     @app.context_processor
     def inject_globals():
-        rate = usd_rate()
         return {
             "currency": get_setting("currency", DEFAULT_CURRENCY),
-            "usd_rate": rate,
+            "base_currency": BASE_CURRENCY,
+            "currencies": CURRENCIES,
+            "usd_rate": usd_rate(),
             "today": date.today(),
         }
 
@@ -53,6 +59,15 @@ def create_app():
 app = create_app()
 
 if __name__ == "__main__":
+    import threading
+    import webbrowser
+
     port = int(os.environ.get("PORT", 5000))
     debug = os.environ.get("FLASK_DEBUG", "0").lower() in ("1", "true", "yes")
+    open_browser = os.environ.get("OPEN_BROWSER", "0").lower() in ("1", "true", "yes")
+    url = os.environ.get("APP_URL", f"http://127.0.0.1:{port}/")
+
+    if open_browser and (not debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true"):
+        threading.Timer(1.2, lambda: webbrowser.open(url)).start()
+
     app.run(host="127.0.0.1", port=port, debug=debug, use_reloader=debug)

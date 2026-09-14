@@ -20,9 +20,15 @@ def _load_dotenv():
 
 _load_dotenv()
 
-DATABASE_PATH = os.environ.get(
-    "DATABASE_PATH", os.path.join(BASE_DIR, "finance.db")
-)
+
+def _normalize_database_url(url: str) -> str:
+    """Render/Heroku sometimes give postgres://; psycopg2 prefers postgresql://."""
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://") :]
+    return url
+
+
+DATABASE_URL = _normalize_database_url(os.environ.get("DATABASE_URL", "").strip())
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me-in-production")
 DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "BYN")
 DEFAULT_USD_RATE = os.environ.get("USD_RATE", "3.27")
