@@ -1,7 +1,7 @@
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
 from services.constants import SAVINGS_TYPE_GROUPS
-from services.forms import parse_entry_fields
+from services.forms import parse_currency, parse_entry_fields, parse_money
 from services.progress import usage_percent
 from services.repository import (
     create_savings_entry,
@@ -18,13 +18,17 @@ bp = Blueprint("savings", __name__, url_prefix="/savings")
 def index():
     grouped = {k: [] for k in SAVINGS_TYPE_GROUPS}
     for g in list_savings_goals():
-        saved = sum_savings_for_goal(g["id"])
+        cur = g.get("currency", "BYN")
+        saved = sum_savings_for_goal(g["id"], cur)
         target = float(g["target_amount"])
+        remaining = max(0, target - saved)
         pct = usage_percent(saved, target)
         grouped[g["type"]].append({
             **g,
+            "goal_currency": cur,
             "saved": saved,
-            "remaining": max(0, target - saved),
+            "saved_currency": cur,
+            "remaining": remaining,
             "pct": pct,
             "history": list_savings_entries(g["id"]),
         })
@@ -46,8 +50,9 @@ def add_goal():
     create_savings_goal(
         name,
         request.form.get("type", "want"),
-        float(request.form.get("target_amount") or 0),
+        parse_money("target_amount"),
         deadline,
+        parse_currency(),
     )
     flash("Цель добавлена", "success")
     return redirect(url_for("savings.index"))
@@ -55,12 +60,13 @@ def add_goal():
 
 @bp.route("/entry/add", methods=["POST"])
 def add_entry():
-    amount, entry_date, comment = parse_entry_fields()
+    amount, entry_date, comment, currency = parse_entry_fields()
     create_savings_entry(
         int(request.form.get("goal_id")),
         amount,
         entry_date,
         comment,
+        currency,
     )
     flash("Пополнение записано", "success")
     return redirect(url_for("savings.index"))

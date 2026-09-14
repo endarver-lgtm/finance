@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import money, period_switcher, empty_state %}
+{% from 'macros.html' import money, currency_select, period_switcher, empty_state with context %}
 
 {% block title %}Приходы — Финансы{% endblock %}
 
@@ -7,16 +7,50 @@
 <header class="page-header">
   <h1>Приходы</h1>
   <div class="header-actions">
-    {{ period_switcher(periods, period, url_for('income.index')) }}
+    {{ period_switcher(periods, period, url_for('income.index'), period_query) }}
     <button type="button" class="btn btn-secondary" data-open="modal-one-time">Разовый доход</button>
     <button type="button" class="btn btn-primary" data-open="modal-add-source">Добавить источник</button>
   </div>
 </header>
 
+<div class="period-banner card">
+  <div class="period-banner-main">
+    <span class="period-banner-label">План и факт за период</span>
+    <strong class="period-banner-value">{{ period_caption }}</strong>
+    {% if period == 'month' and month_nav and not month_nav.is_current %}
+    <span class="period-banner-hint">не текущий месяц — поступления только с датами в этом интервале</span>
+    {% elif period == 'month' %}
+    <span class="period-banner-hint">с 1-го по последний день месяца · при смене месяца счётчик обнуляется</span>
+    {% endif %}
+  </div>
+  {% if month_nav %}
+  <div class="month-nav">
+    <a href="{{ month_nav.prev }}" class="btn btn-secondary btn-sm">← Пред.</a>
+    {% if not month_nav.is_current %}
+    <a href="{{ url_for('income.index', period='month') }}" class="btn btn-secondary btn-sm">Сегодня</a>
+    {% endif %}
+    <a href="{{ month_nav.next }}" class="btn btn-secondary btn-sm">След. →</a>
+  </div>
+  {% endif %}
+</div>
+
+{% if sources or orphan_fact > 0 %}
+<div class="period-summary card">
+  <div>
+    <span class="stat-label">Итого план</span>
+    <span class="stat-value">{{ money(period_totals.planned) }}</span>
+  </div>
+  <div>
+    <span class="stat-label">Итого факт</span>
+    <span class="stat-value text-accent">{{ money(period_totals.fact) }}</span>
+  </div>
+</div>
+{% endif %}
+
 {% if sources %}
 <div class="cards-grid">
   {% for s in sources %}
-  <article class="card source-card">
+  <article class="card source-card {% if s.type == 'regular' %}source-card--regular{% endif %}">
     <div class="card-top">
       <h3>{{ s.name }}</h3>
       <span class="badge {% if s.status == 'received' %}badge-ok{% elif s.status == 'partial' %}badge-pending{% else %}badge-muted{% endif %}">
@@ -26,12 +60,12 @@
     <p class="muted">{{ type_labels[s.type] }} · {{ freq_labels[s.frequency] }}</p>
     <div class="source-stats">
       <div>
-        <span class="stat-label">План</span>
-        <span class="stat-value">{{ money(s.planned_period) }}</span>
+        <span class="stat-label">План за период</span>
+        <span class="stat-value">{{ money(s.planned_period, s.planned_currency) }}</span>
       </div>
       <div>
-        <span class="stat-label">Факт</span>
-        <span class="stat-value text-accent">{{ money(s.fact) }}</span>
+        <span class="stat-label">Факт за период</span>
+        <span class="stat-value text-accent">{{ money(s.fact, s.fact_currency) }}</span>
       </div>
     </div>
     {% if s.active %}
@@ -45,7 +79,10 @@
         <form method="post" action="{{ url_for('income.add_entry') }}">
           <input type="hidden" name="source_id" value="{{ s.id }}">
           <input type="hidden" name="period" value="{{ period }}">
+          <input type="hidden" name="year" value="{{ ref_year }}">
+          <input type="hidden" name="month" value="{{ ref_month }}">
           <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+          {{ currency_select() }}
           <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
           <label>Комментарий <input type="text" name="comment"></label>
           <div class="modal-actions">
@@ -58,8 +95,26 @@
   </article>
   {% endfor %}
 </div>
-{% else %}
-{{ empty_state('Нет источников дохода', 'Добавьте зарплату, фриланс или другой регулярный доход', 'Добавить источник', 'modal-add-source') }}
+{% endif %}
+
+{% if orphan_fact > 0 %}
+<article class="card source-card source-card--orphan section-orphan">
+  <div class="card-top">
+    <h3>Разовые без проекта</h3>
+    <span class="badge badge-ok">В периоде</span>
+  </div>
+  <p class="muted">Кнопка «Разовый доход» · видно в истории как «Разовый доход»</p>
+  <div class="source-stats">
+    <div>
+      <span class="stat-label">Факт за период</span>
+      <span class="stat-value text-accent">{{ money(orphan_fact) }}</span>
+    </div>
+  </div>
+</article>
+{% endif %}
+
+{% if not sources and orphan_fact <= 0 %}
+{{ empty_state('Нет источников дохода', 'Ретейнер: источник «ежемесячно». Проект: источник с периодичностью «разово» или кнопка «Разовый доход»', 'Добавить источник', 'modal-add-source') }}
 {% endif %}
 
 <article class="card chart-card section-chart">
@@ -71,8 +126,11 @@
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
     <h3>Новый источник</h3>
+    <p class="modal-hint">Ретейнер — «ежемесячно». Проект с оплатой по этапам — имя клиента, «разово», отмечайте каждое поступление отдельно.</p>
     <form method="post" action="{{ url_for('income.add_source') }}">
       <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="year" value="{{ ref_year }}">
+      <input type="hidden" name="month" value="{{ ref_month }}">
       <label>Название <input type="text" name="name" required></label>
       <label>Тип
         <select name="type">
@@ -81,6 +139,7 @@
         </select>
       </label>
       <label>Плановая сумма <input type="number" name="planned_amount" step="0.01" required></label>
+      {{ currency_select() }}
       <label>Периодичность
         <select name="frequency">
           <option value="weekly">Еженедельно</option>
@@ -101,7 +160,11 @@
   <div class="modal-dialog">
     <h3>Разовый доход</h3>
     <form method="post" action="{{ url_for('income.add_one_time') }}">
+      <input type="hidden" name="period" value="{{ period }}">
+      <input type="hidden" name="year" value="{{ ref_year }}">
+      <input type="hidden" name="month" value="{{ ref_month }}">
       <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+      {{ currency_select() }}
       <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
       <label>Комментарий <input type="text" name="comment" placeholder="Например: продажа вещи"></label>
       <div class="modal-actions">

@@ -10,6 +10,14 @@ BUDGET_PERIODS = {
     "month": "Месяц",
 }
 
+CURRENCIES = {
+    "BYN": "BYN — бел. рубль",
+    "USD": "USD — доллар",
+    "EUR": "EUR — евро",
+}
+
+BASE_CURRENCY = "BYN"
+
 INCOME_TYPE_LABELS = {
     "regular": "Регулярный",
     "one_time": "Разовый",

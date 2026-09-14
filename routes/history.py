@@ -1,7 +1,8 @@
 from flask import Blueprint, render_template, request
 
 from services.analytics import history_rows
-from services.constants import HISTORY_KIND_LABELS
+from services.constants import BASE_CURRENCY, HISTORY_KIND_LABELS
+from services.currency import to_byn
 from services.dates import format_date, parse_date
 from services.repository import list_history_category_names
 
@@ -24,13 +25,20 @@ def index():
             **r,
             "date_fmt": format_date(parse_date(r["date"])),
             "kind_label": HISTORY_KIND_LABELS[r["kind"]],
+            "currency": r.get("currency", "BYN"),
         }
         for r in rows
     ]
 
-    total_income = sum(r["amount"] for r in rows if r["kind"] == "income")
-    total_expense = sum(r["amount"] for r in rows if r["kind"] == "expense")
-    total_savings = sum(r["amount"] for r in rows if r["kind"] == "savings")
+    total_income = sum(
+        to_byn(r["amount"], r.get("currency")) for r in rows if r["kind"] == "income"
+    )
+    total_expense = sum(
+        to_byn(r["amount"], r.get("currency")) for r in rows if r["kind"] == "expense"
+    )
+    total_savings = sum(
+        to_byn(r["amount"], r.get("currency")) for r in rows if r["kind"] == "savings"
+    )
 
     return render_template(
         "history.html",
@@ -47,6 +55,7 @@ def index():
             "expense": total_expense,
             "savings": total_savings,
             "net": total_income - total_expense,
+            "currency": BASE_CURRENCY,
         },
         kind_labels=HISTORY_KIND_LABELS,
     )

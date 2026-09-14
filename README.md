@@ -1,15 +1,15 @@
-# 💰 Finance Tracker
+# Finance Tracker
 
-> Личный финансовый трекер: приходы, бюджет-конверты, накопления и история — в белорусских рублях с оценкой в долларах.
+Личный финансовый трекер: приходы, бюджет-конверты, накопления и история — в белорусских рублях с оценкой в долларах.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=flat-square&logo=python&logoColor=white)
 ![Flask](https://img.shields.io/badge/Flask-3.0-000000?style=flat-square&logo=flask&logoColor=white)
-![SQLite](https://img.shields.io/badge/SQLite-локально-003B57?style=flat-square&logo=sqlite&logoColor=white)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
+![Postgres](https://img.shields.io/badge/Postgres-Supabase-3ECF8E?style=flat-square&logo=supabase&logoColor=white)
+![Render](https://img.shields.io/badge/Deploy-Render-46E3B7?style=flat-square&logo=render&logoColor=white)
 
 ---
 
-## ✨ Возможности
+## Возможности
 
 | Раздел | Что умеет |
 |--------|-----------|
@@ -20,160 +20,101 @@
 | **История** | Все операции в одной таблице с фильтрами |
 | **Настройки** | Курс BYN → USD для примерной оценки в $ |
 
-**Валюта:** суммы в **BYN**, рядом везде **≈ $** (курс настраивается).
-
-**Периоды:** день · неделя · месяц · год (на дашборде и приходах).
-
 ---
 
-## 🖼 Скриншоты
-
-<!-- Добавьте скриншоты в docs/screenshots/ и раскомментируйте:
-
-![Дашборд](docs/screenshots/dashboard.png)
-![Бюджет](docs/screenshots/budget.png)
-
--->
-
-> Скриншоты можно положить в `docs/screenshots/` и вставить ссылки выше.
-
----
-
-## 🛠 Стек
+## Стек
 
 | Слой | Технологии |
 |------|------------|
-| Backend | Python, Flask, SQLite |
+| Backend | Python, Flask, Gunicorn |
+| БД | PostgreSQL (Supabase) |
 | Frontend | Jinja2, CSS, Chart.js |
-| Шрифт | [Inter](https://fonts.google.com/specimen/Inter) |
-| Продакшен | Gunicorn (`Procfile`) |
+| Хостинг | Render |
 
-**Дизайн:** светлый UI · карточки `#FFFFFF` · акцент `#4ADE80` · скругления 16px · адаптив (нижнее меню на телефоне).
+Полная инструкция по деплою: **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
-## 🚀 Быстрый старт
+## Быстрый старт (локально)
 
-### Windows
+1. Создайте проект в Supabase и скопируйте connection string (см. DEPLOY.md).
+2. Настройте окружение:
 
 ```bat
-git clone https://github.com/YOUR_USERNAME/finance.git
-cd finance
+copy .env.example .env
+```
+
+Вставьте `DATABASE_URL` и `SECRET_KEY` в `.env`.
+
+3. Запуск:
+
+```bat
 start.bat
 ```
 
-Откройте в браузере: **http://127.0.0.1:5000**
-
-### macOS / Linux
+macOS / Linux:
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/finance.git
-cd finance
 chmod +x start.sh
 ./start.sh
 ```
 
-`start.bat` / `start.sh` сами создают `.venv`, ставят зависимости и поднимают сервер.
-
-### Вручную
-
-```bash
-python -m venv .venv
-# Windows:  .venv\Scripts\activate
-# Unix:     source .venv/bin/activate
-pip install -r requirements.txt
-set FLASK_DEBUG=1          # Windows
-export FLASK_DEBUG=1     # macOS / Linux
-python app.py
-```
+Откройте http://127.0.0.1:5000
 
 ---
 
-## ⚙️ Настройки
+## Переменные окружения
 
-Скопируйте пример окружения:
-
-```bash
-cp .env.example .env
-```
-
-| Переменная | Описание | По умолчанию |
-|------------|----------|--------------|
-| `DATABASE_PATH` | Путь к файлу SQLite | `./finance.db` |
-| `SECRET_KEY` | Секрет Flask (сессии) | dev-ключ |
-| `USD_RATE` | BYN за 1 USD (для ≈ $) | `3.27` |
-| `DEFAULT_CURRENCY` | Метка валюты | `BYN` |
-
-Курс можно менять в интерфейсе: **Настройки → Курс для оценки в долларах**.
+| Переменная | Описание |
+|------------|----------|
+| `DATABASE_URL` | URI Postgres из Supabase (**обязательно**) |
+| `SECRET_KEY` | Секрет Flask (сессии) |
+| `DEFAULT_CURRENCY` | Метка валюты (по умолчанию `BYN`) |
+| `USD_RATE` | Начальный курс для seed (дальше — в UI «Настройки») |
 
 ---
 
-## 📋 Команды
+## Команды
 
 | Команда | Действие |
 |---------|----------|
-| `start.bat` / `./start.sh` | Запуск dev-сервера |
-| `reset.bat` | Полная очистка БД |
-| `python manage.py reset` | То же из терминала |
-
-После `reset` база пустая, настройки: **BYN**, курс **3.27**.
+| `start.bat` / `./start.sh` | Dev-сервер |
+| `python manage.py reset` | Очистить все таблицы в Postgres и создать заново |
 
 ---
 
-## 📁 Структура проекта
+## Структура
 
 ```
 finance/
-├── app.py                 # Точка входа Flask
-├── manage.py              # CLI (reset)
-├── config.py              # Конфиг и .env
-├── db/
-│   ├── schema.py          # Таблицы SQLite
-│   ├── connection.py      # get_db()
-│   └── settings.py        # Настройки приложения
-├── routes/                # Страницы (blueprints)
+├── app.py
+├── config.py
+├── db/                 # Postgres: схема, подключение, настройки
+├── routes/
 ├── services/
-│   ├── analytics.py       # KPI, графики, история
-│   ├── repository.py      # CRUD и запросы
-│   ├── planning.py        # План vs период
-│   ├── currency.py        # BYN → USD
-│   └── constants.py       # Подписи UI
-├── templates/             # Jinja2
+├── templates/
 ├── static/
-│   ├── css/style.css
-│   └── js/                # Chart.js, модалки
-├── start.bat / start.sh
-├── reset.bat
-└── Procfile               # gunicorn для деплоя
+├── supabase/schema.sql # DDL для SQL Editor (опционально)
+├── render.yaml
+├── Procfile
+└── DEPLOY.md           # Render + Supabase пошагово
 ```
 
 ---
 
-## 🗄 База данных
+## Деплой на Render
 
-SQLite, один файл `finance.db`:
+Кратко:
 
-- `income_sources` / `income_entries` — приходы  
-- `budget_categories` / `budget_entries` — конверты  
-- `savings_goals` / `savings_entries` — накопления  
-- `settings` — валюта и курс USD  
+1. Supabase → проект → скопировать `DATABASE_URL`.
+2. Render → Web Service из GitHub → Build/Start как в `Procfile` / `render.yaml`.
+3. Environment: `DATABASE_URL`, `SECRET_KEY`.
 
-Таблицы создаются автоматически при первом запуске.
-
----
-
-## 🌐 Деплой
-
-```bash
-# Пример: Railway / Render
-gunicorn app:app --bind 0.0.0.0:$PORT
-```
-
-> На бесплатном хостинге файл SQLite может **обнуляться** при пересборке. Для постоянных данных используйте volume или внешнюю БД.
+Подробно со скриншотами шагов: **[DEPLOY.md](DEPLOY.md)**.
 
 ---
 
-## 🗺 Маршруты
+## Маршруты
 
 | URL | Страница |
 |-----|----------|
@@ -186,24 +127,6 @@ gunicorn app:app --bind 0.0.0.0:$PORT
 
 ---
 
-## 🤝 Разработка
+## Лицензия
 
-```bash
-pip install -r requirements.txt
-python manage.py reset   # чистая БД
-python app.py
-```
-
-Идеи для PR: тёмная тема, экспорт CSV, API, мобильное PWA.
-
----
-
-## 📄 Лицензия
-
-MIT — используйте свободно, на свой страх и риск.
-
----
-
-<p align="center">
-  Сделано для учёта личных финансов в <strong>BYN</strong> 🇧🇾
-</p>
+MIT

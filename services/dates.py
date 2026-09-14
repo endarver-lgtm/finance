@@ -72,3 +72,23 @@ def month_label(d: date) -> str:
         "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек",
     ]
     return f"{months[d.month - 1]} {d.year}"
+
+
+MONTHS_NOM = [
+    "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
+    "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
+]
+
+
+def period_caption(period: str, ref: date | None = None) -> str:
+    ref = ref or date.today()
+    start, end = period_bounds(period, ref)
+    if period == "day":
+        return format_date(ref)
+    if period == "week":
+        return f"{format_date(start)} – {format_date(end)}"
+    if period == "month":
+        return f"{MONTHS_NOM[ref.month - 1]} {ref.year}"
+    if period == "year":
+        return str(ref.year)
+    return f"{format_date(start)} – {format_date(end)}"

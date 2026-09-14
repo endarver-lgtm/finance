@@ -1,5 +1,6 @@
 from datetime import date
 
+from services.currency import to_byn
 from services.dates import period_bounds
 
 _FREQ_SCALE = {
@@ -19,34 +20,54 @@ def income_planned_for_period(period: str, ref: date | None = None) -> float:
     from db import get_db
 
     start, end = period_bounds(period, ref)
-    total = 0.0
+    total_byn = 0.0
     with get_db() as conn:
         sources = conn.execute(
-            "SELECT planned_amount, frequency, type FROM income_sources WHERE active = 1"
+            """
+            SELECT id, planned_amount, currency, frequency
+            FROM income_sources WHERE active = 1
+            """
         ).fetchall()
+        received_by_source: dict[int, float] = {}
+        for row in conn.execute(
+            """
+            SELECT source_id, amount, currency FROM income_entries
+            WHERE source_id IS NOT NULL
+            """
+        ).fetchall():
+            sid = row["source_id"]
+            received_by_source[sid] = received_by_source.get(sid, 0.0) + to_byn(
+                row["amount"], row["currency"]
+            )
     for s in sources:
+        amt = float(s["planned_amount"])
+        cur = s["currency"] if "currency" in s.keys() else "BYN"
+        planned_byn = to_byn(amt, cur)
         if s["frequency"] == "one_time":
-            if s["type"] == "one_time" and start <= date.today() <= end:
-                total += float(s["planned_amount"])
+            received = received_by_source.get(s["id"], 0.0)
+            if received < planned_byn - 0.005 and start <= date.today() <= end:
+                total_byn += planned_byn
             continue
-        total += scale_by_frequency(
-            float(s["planned_amount"]), s["frequency"], period
-        )
-    return round(total, 2)
+        scaled = scale_by_frequency(amt, s["frequency"], period)
+        total_byn += to_byn(scaled, cur)
+    return round(total_byn, 2)
 
 
 def budget_planned_for_period(period: str, ref: date | None = None) -> float:
     from db import get_db
 
     view = period if period in ("week", "month") else "month"
-    total = 0.0
+    total_byn = 0.0
     with get_db() as conn:
         cats = conn.execute(
-            "SELECT planned_amount, period FROM budget_categories"
+            "SELECT planned_amount, currency, period FROM budget_categories"
         ).fetchall()
     for c in cats:
-        total += category_planned_for_period(dict(c), view)
-    return round(total, 2)
+        cat = dict(c)
+        scaled = category_planned_for_period(cat, view)
+        cur = cat.get("currency", "BYN")
+        total_byn += to_byn(scaled, cur)
+    return round(total_byn, 2)
 
 
 def category_planned_for_period(cat: dict, view_period: str) -> float:
@@ -59,10 +80,25 @@ def category_planned_for_period(cat: dict, view_period: str) -> float:
     return amt
 
 
-def source_planned_for_period(source: dict, view_period: str) -> float:
+def source_planned_for_period(
+    source: dict,
+    view_period: str,
+    *,
+    total_received: float | None = None,
+) -> float:
     planned = float(source["planned_amount"])
-    if source["frequency"] == "weekly" and view_period == "month":
+    freq = source.get("frequency", "monthly")
+    if freq == "one_time":
+        received = (
+            float(source["total_fact"])
+            if total_received is None and "total_fact" in source
+            else (total_received or 0.0)
+        )
+        if received >= planned - 0.005:
+            return 0.0
+        return planned
+    if freq == "weekly" and view_period == "month":
         return planned * 4
-    if source["frequency"] == "weekly" and view_period == "year":
+    if freq == "weekly" and view_period == "year":
         return planned * 52
-    return scale_by_frequency(planned, source["frequency"], view_period)
+    return scale_by_frequency(planned, freq, view_period)

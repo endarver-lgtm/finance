@@ -1,14 +1,28 @@
-{% macro money(amount) %}
+{% macro money(amount, currency='BYN', show_original=true) %}
+{% set c = currency|default('BYN') %}
 <span class="money-pair">
-  <span class="money-byn">{{ "%.2f"|format(amount|float) }} BYN</span>
-  <span class="money-usd">≈ ${{ amount|to_usd }}</span>
+  <span class="money-main">{{ amount|to_byn(c) }} <span class="money-unit">BYN</span></span>
+  <span class="money-sub">≈ ${{ amount|to_usd(c) }}</span>
+  {% if show_original and c != 'BYN' %}
+  <span class="money-original">{{ "%.2f"|format(amount|float) }} {{ c }} в записи</span>
+  {% endif %}
 </span>
 {% endmacro %}
 
-{% macro period_switcher(periods, current, base_url) %}
+{% macro currency_select(name='currency', selected='BYN') %}
+<label>Валюта записи
+  <select name="{{ name }}">
+    {% for code, label in currencies.items() %}
+    <option value="{{ code }}" {% if code == selected %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+</label>
+{% endmacro %}
+
+{% macro period_switcher(periods, current, base_url, period_query='') %}
 <div class="period-switcher">
   {% for key, label in periods.items() %}
-  <a href="{{ base_url }}?period={{ key }}" class="period-btn {% if key == current %}active{% endif %}">{{ label }}</a>
+  <a href="{{ base_url }}?period={{ key }}{% if key == 'month' %}{{ period_query }}{% endif %}" class="period-btn {% if key == current %}active{% endif %}">{{ label }}</a>
   {% endfor %}
 </div>
 {% endmacro %}

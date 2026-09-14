@@ -166,9 +166,10 @@ body {
 }
 
 .kpi-value {
-  font-size: 2rem;
+  font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .kpi-sub { font-size: 0.8rem; color: var(--muted); }
@@ -197,6 +198,68 @@ body {
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.period-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.15rem;
+}
+
+.source-card--orphan {
+  margin-top: 0.5rem;
+  margin-bottom: 1.25rem;
+  border-style: dashed;
+}
+
+.modal-hint {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin: 0 0 1rem;
+  line-height: 1.45;
+}
+
+.period-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+  padding: 1rem 1.15rem;
+}
+
+.period-banner-label {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-bottom: 0.2rem;
+}
+
+.period-banner-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+.period-banner-hint {
+  display: block;
+  font-size: 0.72rem;
+  color: #a3a3a3;
+  margin-top: 0.35rem;
+  max-width: 28rem;
+}
+
+.month-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.btn-sm {
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
 }
 
 .period-switcher {
@@ -287,6 +350,23 @@ body {
 }
 
 .upcoming-item { padding: 0.5rem 0; border-bottom: 1px solid var(--bg); }
+
+.card.source-card--regular {
+  background: #f3fbf6;
+  box-shadow: 0 2px 16px rgba(74, 222, 128, 0.08);
+}
+
+.upcoming-item--regular {
+  background: #f3fbf6;
+  border-radius: 10px;
+  padding: 0.65rem 0.75rem;
+  margin: 0 -0.25rem;
+  border-bottom: none;
+}
+
+.upcoming-list .upcoming-item--regular + .upcoming-item--regular {
+  margin-top: 0.35rem;
+}
 
 .source-card .card-top,
 .budget-stats,
@@ -441,36 +521,69 @@ body {
 .settings-card label { display: block; margin-bottom: 1rem; }
 .settings-currency-label { margin-bottom: 1rem; font-size: 0.95rem; }
 
+/* Суммы: крупно BYN, ниже мелко ≈ USD, оригинал валюты записи — ещё тише */
 .money-pair {
   display: inline-flex;
-  align-items: baseline;
-  gap: 0.35rem 0.6rem;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  line-height: 1.2;
+  vertical-align: middle;
 }
 
-.money-byn { font-weight: inherit; }
-
-.money-usd {
-  font-size: 0.72em;
-  color: var(--muted);
-  font-weight: 500;
+.money-main {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--dark);
+  letter-spacing: -0.01em;
   white-space: nowrap;
 }
 
-.kpi-value .money-pair { flex-direction: column; align-items: flex-start; gap: 0.15rem; }
-.kpi-value .money-usd { font-size: 0.42em; }
+.money-unit {
+  font-weight: 500;
+  font-size: 0.78em;
+  color: #525252;
+}
 
-.data-table .money-pair { flex-direction: column; align-items: flex-end; gap: 0.1rem; }
-.data-table .money-usd { font-size: 0.7rem; }
+.money-sub {
+  font-size: 0.68rem;
+  font-weight: 400;
+  color: #a3a3a3;
+  white-space: nowrap;
+}
 
+.money-original {
+  font-size: 0.62rem;
+  font-weight: 400;
+  color: #b5b5b5;
+  white-space: nowrap;
+}
+
+.kpi-value .money-main { font-size: 1.45rem; font-weight: 700; }
+.kpi-value .money-unit { font-size: 0.55em; }
+.kpi-value .money-sub { font-size: 0.62rem; }
+.kpi-value .money-original { display: none; }
+
+.stat-value .money-main { font-size: 1.05rem; }
+
+.data-table .money-pair,
 .envelope-head .money-pair,
 .upcoming-item .money-pair,
 .budget-stats .money-pair,
 .source-stats .money-pair,
-.goal-stats .money-pair {
-  flex-direction: column;
+.goal-stats .money-pair,
+.history-list .money-pair {
   align-items: flex-end;
-  gap: 0.1rem;
+  text-align: right;
+}
+
+.data-table .money-main { font-size: 0.88rem; }
+
+.budget-stats .money-pair,
+.source-stats .money-pair,
+.goal-stats .money-pair {
+  display: inline-flex;
+  vertical-align: middle;
 }
 
 @media (max-width: 768px) {

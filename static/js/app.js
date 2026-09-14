@@ -46,11 +46,11 @@
     chartDefaults();
   }
 
-  function moneyLabel(value) {
+  function moneyLabel(valueByn) {
     const rate = window.FINANCE?.usdRate || 3.27;
-    const byn = Number(value) || 0;
+    const byn = Number(valueByn) || 0;
     const usd = byn / rate;
-    return `${byn.toFixed(2)} BYN (≈ $${usd.toFixed(2)})`;
+    return `${byn.toFixed(2)} BYN\n≈ $${usd.toFixed(2)}`;
   }
 
   window.financeCharts = {

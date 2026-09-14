@@ -1,5 +1,5 @@
 {% extends 'base.html' %}
-{% from 'macros.html' import money, empty_state %}
+{% from 'macros.html' import money, currency_select, empty_state with context %}
 
 {% block title %}Накопления — Финансы{% endblock %}
 
@@ -24,9 +24,9 @@
       <p class="muted">Дедлайн: {{ g.deadline | db_date }}</p>
       {% endif %}
       <div class="goal-stats">
-        <div><span class="stat-label">Цель</span><span class="stat-value">{{ money(g.target_amount) }}</span></div>
-        <div><span class="stat-label">Накоплено</span><span class="stat-value text-accent">{{ money(g.saved) }}</span></div>
-        <div><span class="stat-label">Осталось</span><span class="stat-value">{{ money(g.remaining) }}</span></div>
+        <div><span class="stat-label">Цель</span><span class="stat-value">{{ money(g.target_amount, g.goal_currency) }}</span></div>
+        <div><span class="stat-label">Накоплено</span><span class="stat-value text-accent">{{ money(g.saved, g.saved_currency) }}</span></div>
+        <div><span class="stat-label">Осталось</span><span class="stat-value">{{ money(g.remaining, g.goal_currency) }}</span></div>
       </div>
       <div class="progress-track">
         <div class="progress-fill ok" style="width: {{ g.pct }}%"></div>
@@ -41,7 +41,7 @@
           {% for h in g.history %}
           <li>
             <span>{{ h.date | db_date }}</span>
-            <span>{{ money(h.amount) }}</span>
+            <span>{{ money(h.amount, h.currency|default('BYN')) }}</span>
             {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
           </li>
           {% endfor %}
@@ -56,6 +56,7 @@
           <form method="post" action="{{ url_for('savings.add_entry') }}">
             <input type="hidden" name="goal_id" value="{{ g.id }}">
             <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+            {{ currency_select() }}
             <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
             <label>Комментарий <input type="text" name="comment"></label>
             <div class="modal-actions">
@@ -89,6 +90,7 @@
         </select>
       </label>
       <label>Целевая сумма <input type="number" name="target_amount" step="0.01" required></label>
+      {{ currency_select() }}
       <label>Дедлайн (необязательно) <input type="date" name="deadline"></label>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" data-close>Отмена</button>

@@ -13,6 +13,8 @@ def progress_color(pct: float) -> str:
 
 
 def income_status(fact: float, planned: float) -> str:
+    if fact > 0 and planned <= 0:
+        return "received"
     if planned > 0 and fact >= planned:
         return "received"
     if fact > 0:

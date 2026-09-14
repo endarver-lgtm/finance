@@ -18,15 +18,22 @@ if not exist ".venv\Scripts\python.exe" (
   if errorlevel 1 goto :fail
 )
 
-if not defined DATABASE_PATH set "DATABASE_PATH=%CD%\finance.db"
+REM DATABASE_URL берётся из .env (см. .env.example) при старте Python.
 set "FLASK_DEBUG=1"
 set "PORT=5000"
+set "OPEN_BROWSER=1"
+set "APP_URL=http://127.0.0.1:%PORT%/"
+
+if not exist "%USERPROFILE%\Desktop\Finance.lnk" (
+  echo Creating desktop shortcut...
+  powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\create_desktop_shortcut.ps1" >nul 2>&1
+)
 
 echo.
 echo   Finance tracker
-echo   Open: http://127.0.0.1:%PORT%
-echo   DB:   %DATABASE_PATH%
-echo   Stop: Ctrl+C
+echo   URL:  %APP_URL%
+echo   DB:   Postgres ^(DATABASE_URL^)
+echo   Browser opens automatically. Stop: Ctrl+C
 echo.
 
 call .venv\Scripts\python.exe app.py
