@@ -5,8 +5,11 @@
 
 {% block content %}
 <header class="page-header">
-  <h1>Накопления</h1>
-  <button type="button" class="btn btn-primary" data-open="modal-add-goal">Добавить цель</button>
+  <div>
+    <h1>Накопления</h1>
+    <p class="muted" style="margin-top: 0.25rem;">Финансовая подушка, цели и крупные покупки</p>
+  </div>
+  <button type="button" class="btn btn-primary" data-open="modal-add-goal">+ Новая цель</button>
 </header>
 
 {% set has_goals = grouped.values() | map('length') | sum > 0 %}
@@ -15,53 +18,142 @@
 {% for type_key, group_title in type_groups.items() %}
 {% if grouped[type_key] %}
 <section class="goal-section">
-  <h2>{{ group_title }}</h2>
+  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+    <h2 style="margin-bottom: 0;">{{ group_title }}</h2>
+    <span class="badge badge-muted">{{ grouped[type_key] | length }}</span>
+  </div>
   <div class="cards-grid">
     {% for g in grouped[type_key] %}
     <article class="card goal-card">
-      <h3>{{ g.name }}</h3>
-      {% if g.deadline %}
-      <p class="muted">Дедлайн: {{ g.deadline | db_date }}</p>
-      {% endif %}
-      <div class="goal-stats">
-        <div><span class="stat-label">Цель</span><span class="stat-value">{{ money(g.target_amount, g.goal_currency) }}</span></div>
-        <div><span class="stat-label">Накоплено</span><span class="stat-value text-accent">{{ money(g.saved, g.saved_currency) }}</span></div>
-        <div><span class="stat-label">Осталось</span><span class="stat-value">{{ money(g.remaining, g.goal_currency) }}</span></div>
+      <div>
+        <div class="card-top">
+          <h3>{{ g.name }}</h3>
+          <span class="badge {% if g.pct >= 100 %}badge-ok{% else %}badge-pending{% endif %}">
+            {% if g.pct >= 100 %}✓ Достигнута{% else %}{{ g.pct }}%{% endif %}
+          </span>
+        </div>
+        {% if g.deadline %}
+        <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.5rem;">Дедлайн: <strong>{{ g.deadline | db_date }}</strong></p>
+        {% endif %}
+
+        <div class="goal-stats">
+          <div>
+            <span class="stat-label">Цель</span>
+            <span class="stat-value">{{ money(g.target_amount, g.goal_currency) }}</span>
+          </div>
+          <div>
+            <span class="stat-label">Накоплено</span>
+            <span class="stat-value text-accent">{{ money(g.saved, g.saved_currency) }}</span>
+          </div>
+          <div>
+            <span class="stat-label">Осталось</span>
+            <span class="stat-value">{{ money(g.remaining, g.goal_currency) }}</span>
+          </div>
+        </div>
+
+        <div class="progress-track">
+          <div class="progress-fill ok" style="width: {{ g.pct }}%"></div>
+        </div>
+        <p class="pct-label">{{ g.pct }}% завершено</p>
       </div>
-      <div class="progress-track">
-        <div class="progress-fill ok" style="width: {{ g.pct }}%"></div>
+
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
+        <button type="button" class="btn btn-primary" data-open="modal-deposit-{{ g.id }}">
+          <span>+</span> Пополнить
+        </button>
+        <button type="button" class="btn btn-secondary" data-open="modal-withdraw-{{ g.id }}">
+          <span>−</span> Снять
+        </button>
       </div>
-      <p class="pct-label">{{ g.pct }}%</p>
-      <button type="button" class="btn btn-primary btn-block" data-open="modal-deposit-{{ g.id }}">Пополнить</button>
 
       {% if g.history %}
       <details class="history-details">
-        <summary>История пополнений</summary>
+        <summary>История операций ({{ g.history | length }})</summary>
         <ul class="history-list">
           {% for h in g.history %}
-          <li>
-            <span>{{ h.date | db_date }}</span>
-            <span>{{ money(h.amount, h.currency|default('BYN')) }}</span>
-            {% if h.comment %}<span class="muted">{{ h.comment }}</span>{% endif %}
+          <li style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border-light, #f1f5f9);">
+            <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; flex-wrap: wrap;">
+              <span class="h-date">{{ h.date | db_date }}</span>
+              <span class="badge {% if h.kind == 'deposit' %}badge-ok{% else %}badge-danger{% endif %}" style="font-size: 0.72rem; padding: 0.15rem 0.4rem;">
+                {% if h.kind == 'deposit' %}+ Взнос
+                {% elif h.kind == 'withdraw_spent' %}− Трата ({{ h.category_name or 'Категория' }})
+                {% elif h.kind == 'withdraw_free' %}− В свободные
+                {% else %}+ Взнос{% endif %}
+              </span>
+              {% if h.comment %}<span class="h-comment muted" style="font-size: 0.75rem;" title="{{ h.comment }}">{{ h.comment }}</span>{% endif %}
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+              <span class="h-sum {% if h.kind != 'deposit' %}text-danger{% endif %}" style="font-size: 0.85rem; font-weight: 600;">
+                {% if h.kind != 'deposit' %}−{% else %}+{% endif %}{{ money(h.amount, h.currency|default('BYN'), false, false) }}
+              </span>
+              <form method="post" action="{{ url_for('savings.delete_entry_route', entry_id=h.id) }}" onsubmit="return confirm('Удалить эту запись?');" style="margin: 0;">
+                <button type="submit" title="Удалить" style="background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.9rem; padding: 0 0.25rem;">✕</button>
+              </form>
+            </div>
           </li>
           {% endfor %}
         </ul>
       </details>
       {% endif %}
 
+      <!-- Модальное окно: Пополнение цели -->
       <div class="modal" id="modal-deposit-{{ g.id }}" aria-hidden="true">
         <div class="modal-backdrop" data-close></div>
         <div class="modal-dialog">
-          <h3>Пополнение — {{ g.name }}</h3>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+            <h3 style="margin-bottom: 0;">Пополнение — {{ g.name }}</h3>
+            <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+          </div>
           <form method="post" action="{{ url_for('savings.add_entry') }}">
             <input type="hidden" name="goal_id" value="{{ g.id }}">
-            <label>Сумма <input type="number" name="amount" step="0.01" required></label>
+            <label>Сумма пополнения <input type="number" name="amount" step="0.01" required placeholder="0.00"></label>
             {{ currency_select() }}
             <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
-            <label>Комментарий <input type="text" name="comment"></label>
+            <label>Комментарий <input type="text" name="comment" placeholder="Например: отложил с аванса"></label>
             <div class="modal-actions">
               <button type="button" class="btn btn-secondary" data-close>Отмена</button>
-              <button type="submit" class="btn btn-primary">Сохранить</button>
+              <button type="submit" class="btn btn-primary">Пополнить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Модальное окно: Снятие из цели -->
+      <div class="modal" id="modal-withdraw-{{ g.id }}" aria-hidden="true">
+        <div class="modal-backdrop" data-close></div>
+        <div class="modal-dialog">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+            <h3 style="margin-bottom: 0;">Снятие — {{ g.name }}</h3>
+            <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+          </div>
+          <p class="muted" style="font-size: 0.85rem; margin-bottom: 1rem;">
+            Доступно в копилке: <strong>{{ money(g.saved, g.goal_currency) }}</strong>
+          </p>
+          <form method="post" action="{{ url_for('savings.withdraw') }}">
+            <input type="hidden" name="goal_id" value="{{ g.id }}">
+            <label>Сумма снятия <input type="number" name="amount" step="0.01" required placeholder="0.00"></label>
+            {{ currency_select() }}
+            <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
+            <label>Куда направить средства
+              <select name="purpose" onchange="const catBox = document.getElementById('cat-group-{{ g.id }}'); if (this.value === 'spent') { catBox.style.display = 'block'; catBox.querySelector('select').required = true; } else { catBox.style.display = 'none'; catBox.querySelector('select').required = false; }">
+                <option value="spent">Потратил (записать в категорию расхода)</option>
+                <option value="free">Вернуть в свободные деньги</option>
+              </select>
+            </label>
+            <div id="cat-group-{{ g.id }}">
+              <label>Категория бюджета
+                <select name="category_id">
+                  <option value="">Выберите категорию</option>
+                  {% for c in categories %}
+                  <option value="{{ c.id }}">{{ c.name }}</option>
+                  {% endfor %}
+                </select>
+              </label>
+            </div>
+            <label>Комментарий <input type="text" name="comment" placeholder="Например: покупка ноутбука"></label>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+              <button type="submit" class="btn btn-primary">Снять</button>
             </div>
           </form>
         </div>
@@ -73,28 +165,32 @@
 {% endif %}
 {% endfor %}
 {% else %}
-{{ empty_state('Нет целей', 'Добавьте хотелку, резерв или крупную цель', 'Добавить цель', 'modal-add-goal') }}
+{{ empty_state('Нет целей накоплений', 'Создайте финансовую подушку, цель на отпуск или крупную покупку', 'Создать цель', 'modal-add-goal') }}
 {% endif %}
 
+<!-- Модальное окно: Создание цели -->
 <div class="modal" id="modal-add-goal" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <h3>Новая цель</h3>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+      <h3 style="margin-bottom: 0;">Новая цель накопления</h3>
+      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    </div>
     <form method="post" action="{{ url_for('savings.add_goal') }}">
-      <label>Название <input type="text" name="name" required></label>
-      <label>Тип
+      <label>Название цели <input type="text" name="name" required placeholder="Например: Отпуск на море"></label>
+      <label>Категория
         <select name="type">
-          <option value="want">Хотелка</option>
-          <option value="reserve">Резерв</option>
-          <option value="big">Крупная цель</option>
+          <option value="want">Хотелка (гаджет, подарок, развлечение)</option>
+          <option value="reserve">Резерв (подушка безопасности)</option>
+          <option value="big">Крупная покупка (авто, жильё, ремонт)</option>
         </select>
       </label>
-      <label>Целевая сумма <input type="number" name="target_amount" step="0.01" required></label>
+      <label>Целевая сумма <input type="number" name="target_amount" step="0.01" required placeholder="0.00"></label>
       {{ currency_select() }}
       <label>Дедлайн (необязательно) <input type="date" name="deadline"></label>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" data-close>Отмена</button>
-        <button type="submit" class="btn btn-primary">Добавить</button>
+        <button type="submit" class="btn btn-primary">Создать цель</button>
       </div>
     </form>
   </div>

@@ -1,28 +1,35 @@
-{% macro money(amount, currency='BYN', show_original=true) %}
+{% macro money(amount, currency='BYN', show_original=true, show_usd=true) %}
 {% set c = currency|default('BYN') %}
-<span class="money-pair">
-  <span class="money-main">{{ amount|to_byn(c) }} <span class="money-unit">BYN</span></span>
-  <span class="money-sub">≈ ${{ amount|to_usd(c) }}</span>
+<span class="money">
+  <span class="money-main"><span class="money-digits">{{ amount|to_byn(c) }}</span> <span class="money-unit">BYN</span></span>
+  {% if show_usd and c != 'USD' %}
+  <span class="money-pill money-pill--usd">≈ ${{ amount|to_usd(c) }}</span>
+  {% endif %}
   {% if show_original and c != 'BYN' %}
-  <span class="money-original">{{ "%.2f"|format(amount|float) }} {{ c }} в записи</span>
+  <span class="money-pill money-pill--orig">{{ "%.2f"|format(amount|float) }} {{ c }}</span>
   {% endif %}
 </span>
 {% endmacro %}
 
-{% macro currency_select(name='currency', selected='BYN') %}
-<label>Валюта записи
-  <select name="{{ name }}">
-    {% for code, label in currencies.items() %}
-    <option value="{{ code }}" {% if code == selected %}selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
+{% macro currency_select(name='currency', selected='BYN', label='Валюта') %}
+<label class="form-field">
+  <span class="form-label">{{ label }}</span>
+  <div class="select-wrapper">
+    <select name="{{ name }}" class="form-select">
+      {% for code, lbl in currencies.items() %}
+      <option value="{{ code }}" {% if code == selected %}selected{% endif %}>{{ lbl }}</option>
+      {% endfor %}
+    </select>
+  </div>
 </label>
 {% endmacro %}
 
 {% macro period_switcher(periods, current, base_url, period_query='') %}
 <div class="period-switcher">
   {% for key, label in periods.items() %}
-  <a href="{{ base_url }}?period={{ key }}{% if key == 'month' %}{{ period_query }}{% endif %}" class="period-btn {% if key == current %}active{% endif %}">{{ label }}</a>
+  <a href="{{ base_url }}?period={{ key }}{% if key == 'month' %}{{ period_query }}{% endif %}" class="period-btn {% if key == current %}active{% endif %}">
+    {{ label }}
+  </a>
   {% endfor %}
 </div>
 {% endmacro %}
@@ -32,7 +39,18 @@
   {% if messages %}
   <div class="flash-list">
     {% for cat, msg in messages %}
-    <div class="flash flash-{{ cat }}">{{ msg }}</div>
+    <div class="flash flash-{{ cat }}">
+      <span class="flash-icon">
+        {% if cat == 'success' %}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6 9 17l-5-5"/></svg>
+        {% elif cat == 'error' %}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        {% else %}
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        {% endif %}
+      </span>
+      <span class="flash-text">{{ msg }}</span>
+    </div>
     {% endfor %}
   </div>
   {% endif %}
@@ -41,6 +59,13 @@
 
 {% macro empty_state(title, hint, btn_label=None, btn_action=None) %}
 <div class="empty-state">
+  <div class="empty-icon">
+    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"/>
+      <line x1="12" y1="8" x2="12" y2="12"/>
+      <line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+  </div>
   <p class="empty-title">{{ title }}</p>
   <p class="empty-hint">{{ hint }}</p>
   {% if btn_label %}

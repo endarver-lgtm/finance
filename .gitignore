@@ -1,6 +1,40 @@
+# Virtual Environment
 .venv/
+env/
+venv/
+ENV/
+
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.so
+
+# Environment variables & secrets
 .env
+.env.local
+.env.*.local
+
+# Database & SQLite files
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
+*.db.bak
+*.bak
+*.sqlite
+*.sqlite3
+
+# Bank statements & personal raw data
+*.pdf
+import_*.csv
+parsed_txs.json
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+.kilo/

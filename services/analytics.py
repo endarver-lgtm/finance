@@ -13,13 +13,64 @@ def income_fact(start: date, end: date) -> float:
 
 
 def budget_fact(start: date, end: date) -> float:
-    return sum_in_range_byn("budget_entries", "date", start, end)
+    return budget_fact_own(start, end)
+
+
+def budget_fact_own(start: date, end: date) -> float:
+    """Собственные расходы (без трат из копилок)."""
+    return sum_in_range_byn(
+        "budget_entries", "date", start, end, "from_goal_id IS NULL"
+    )
+
+
+def budget_fact_from_goals(start: date, end: date) -> float:
+    """Расходы, оплаченные из копилок."""
+    return sum_in_range_byn(
+        "budget_entries", "date", start, end, "from_goal_id IS NOT NULL"
+    )
+
+
+def savings_deposits_for_period(start: date, end: date) -> float:
+    """Взносы в копилки за период."""
+    return sum_in_range_byn(
+        "savings_entries", "date", start, end, "kind = 'deposit'"
+    )
+
+
+def savings_withdraw_free_for_period(start: date, end: date) -> float:
+    """Возврат из копилок в свободные средства за период."""
+    return sum_in_range_byn(
+        "savings_entries", "date", start, end, "kind = 'withdraw_free'"
+    )
+
+
+def free_cash_flow(start: date, end: date) -> float:
+    """Свободный остаток: Приход - Собственные_расходы - Взносы + Возврат_в_свободные - Delta B."""
+    from services.debts import delta_b
+
+    inc = income_fact(start, end)
+    own_exp = budget_fact_own(start, end)
+    dep = savings_deposits_for_period(start, end)
+    w_free = savings_withdraw_free_for_period(start, end)
+    db = delta_b(start, end)
+
+    return round(inc - own_exp - dep + w_free - db, 2)
 
 
 def savings_total() -> float:
-    return sum_in_range_byn(
-        "savings_entries", "date", date(1970, 1, 1), date(2099, 12, 31)
-    )
+    with get_db() as conn:
+        rows = conn.execute("SELECT amount, currency, kind FROM savings_entries").fetchall()
+    total = 0.0
+    for r in rows:
+        kind = r["kind"] if "kind" in r.keys() and r["kind"] else "deposit"
+        amt = to_byn(r["amount"], r["currency"] if "currency" in r.keys() else "BYN")
+        if kind == "deposit":
+            total += amt
+        elif kind in ("withdraw_spent", "withdraw_free"):
+            total -= amt
+    return round(max(0.0, total), 2)
+
+
 
 
 def expenses_by_category(start: date, end: date):
@@ -34,7 +85,7 @@ def expenses_by_category(start: date, end: date):
             "date",
             start,
             end,
-            "category_id = %s",
+            "category_id = ?",
             (c["id"],),
         )
         result.append({"id": c["id"], "name": c["name"], "spent": spent})
@@ -88,7 +139,7 @@ def envelope_progress(period: str = "week", ref: date | None = None):
     with get_db() as conn:
         cats = rows_to_dicts(
             conn.execute(
-                "SELECT * FROM budget_categories ORDER BY name"
+                "SELECT * FROM budget_categories WHERE track_only = 0 ORDER BY name"
             ).fetchall()
         )
     for c in cats:
@@ -100,7 +151,7 @@ def envelope_progress(period: str = "week", ref: date | None = None):
             "date",
             start,
             end,
-            "category_id = %s",
+            "category_id = ? AND from_goal_id IS NULL",
             (c["id"],),
         )
         result.append({
@@ -114,6 +165,7 @@ def envelope_progress(period: str = "week", ref: date | None = None):
             "pct": min(100, round(spent / planned_byn * 100, 1)) if planned_byn > 0 else 0,
         })
     return result
+
 
 
 def upcoming_income(ref: date | None = None):
@@ -134,7 +186,7 @@ def upcoming_income(ref: date | None = None):
             entries = conn.execute(
                 """
                 SELECT amount, currency FROM income_entries
-                WHERE source_id = %s AND date >= %s AND date <= %s
+                WHERE source_id = ? AND date >= ? AND date <= ?
                 """,
                 (s["id"], to_iso(start), to_iso(end)),
             ).fetchall()
@@ -159,10 +211,10 @@ def upcoming_income(ref: date | None = None):
 def _date_filter_clause(col: str, date_from, date_to):
     parts, params = [], []
     if date_from:
-        parts.append(f"{col} >= %s")
+        parts.append(f"{col} >= ?")
         params.append(to_iso(date_from))
     if date_to:
-        parts.append(f"{col} <= %s")
+        parts.append(f"{col} <= ?")
         params.append(to_iso(date_to))
     return (" AND ".join(parts), params) if parts else ("1=1", [])
 
@@ -201,9 +253,11 @@ def history_rows(
             for r in conn.execute(
                 f"""
                 SELECT e.id, e.date, e.amount, e.currency, e.comment,
-                       c.name AS label, 'expense' AS kind
+                       c.name AS label, 'expense' AS kind,
+                       g.name AS from_goal_name
                 FROM budget_entries e
                 JOIN budget_categories c ON c.id = e.category_id
+                LEFT JOIN savings_goals g ON g.id = e.from_goal_id
                 WHERE {clause}
                 ORDER BY e.date DESC
                 """,
@@ -214,13 +268,13 @@ def history_rows(
                     continue
                 rows.append(row)
 
-    if type_filter in ("", "savings"):
+    if type_filter in ("", "savings", "savings_withdraw"):
         clause, params = _date_filter_clause("e.date", date_from, date_to)
         with get_db() as conn:
             for r in conn.execute(
                 f"""
                 SELECT e.id, e.date, e.amount, e.currency, e.comment,
-                       g.name AS label, 'savings' AS kind
+                       g.name AS label, e.kind AS entry_kind
                 FROM savings_entries e
                 JOIN savings_goals g ON g.id = e.goal_id
                 WHERE {clause}
@@ -231,7 +285,34 @@ def history_rows(
                 row = dict(r)
                 if category_filter and row["label"] != category_filter:
                     continue
+                e_kind = row.get("entry_kind") or "deposit"
+                row_kind = "savings" if e_kind == "deposit" else "savings_withdraw"
+                if type_filter and type_filter != row_kind:
+                    continue
+                row["kind"] = row_kind
+                row["raw_kind"] = e_kind
+                rows.append(row)
+
+    if type_filter in ("", "debt"):
+        clause, params = _date_filter_clause("d.date", date_from, date_to)
+        with get_db() as conn:
+            for r in conn.execute(
+                f"""
+                SELECT d.id, d.date, d.amount, d.currency, d.comment,
+                       d.person AS label, 'debt' AS kind, d.kind AS debt_kind
+                FROM debts d
+                WHERE {clause}
+                ORDER BY d.date DESC
+                """,
+                params,
+            ).fetchall():
+                row = dict(r)
+                if category_filter and row["label"] != category_filter:
+                    continue
+                d_kind = row.get("debt_kind")
+                row["sign"] = "+" if d_kind in ("i_paid", "repay_to_him") else "−"
                 rows.append(row)
 
     rows.sort(key=lambda x: x["date"], reverse=True)
     return rows
+

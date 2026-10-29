@@ -6,7 +6,7 @@ def get_setting(key: str, default=None):
 
     with get_db() as conn:
         row = conn.execute(
-            "SELECT value FROM settings WHERE key = %s", (key,)
+            "SELECT value FROM settings WHERE key = ?", (key,)
         ).fetchone()
     return row["value"] if row else default
 
@@ -17,8 +17,8 @@ def set_setting(key: str, value: str):
     with get_db() as conn:
         conn.execute(
             """
-            INSERT INTO settings (key, value) VALUES (%s, %s)
-            ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+            INSERT INTO settings (key, value) VALUES (?, ?)
+            ON CONFLICT (key) DO UPDATE SET value = excluded.value
             """,
             (key, value),
         )
@@ -28,7 +28,7 @@ def seed_settings(conn):
     for key, value in DEFAULT_SETTINGS:
         conn.execute(
             """
-            INSERT INTO settings (key, value) VALUES (%s, %s)
+            INSERT INTO settings (key, value) VALUES (?, ?)
             ON CONFLICT (key) DO NOTHING
             """,
             (key, value),

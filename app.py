@@ -6,23 +6,40 @@ from flask import Flask
 from config import DEFAULT_CURRENCY, SECRET_KEY
 from db import get_setting, init_db
 from services.constants import BASE_CURRENCY, CURRENCIES
-from services.currency import to_byn, to_usd, usd_rate
+from services.currency import eur_rate, to_byn, to_usd, usd_rate
+from services.nbrb import refresh_rates_if_stale
 
 
 def create_app():
     app = Flask(__name__)
     app.secret_key = SECRET_KEY
     init_db()
+    try:
+        refresh_rates_if_stale()
+    except Exception as e:
+        app.logger.warning("Could not update exchange rates from NBRB: %s", e)
 
+    from routes.balance import bp as balance_bp
     from routes.budget import bp as budget_bp
     from routes.dashboard import bp as dashboard_bp
+    from routes.debts import bp as debts_bp
     from routes.history import bp as history_bp
     from routes.income import bp as income_bp
     from routes.savings import bp as savings_bp
     from routes.settings import bp as settings_bp
 
-    for bp in (dashboard_bp, income_bp, budget_bp, savings_bp, history_bp, settings_bp):
+    for bp in (
+        dashboard_bp,
+        income_bp,
+        budget_bp,
+        savings_bp,
+        debts_bp,
+        balance_bp,
+        history_bp,
+        settings_bp,
+    ):
         app.register_blueprint(bp)
+
 
     @app.template_filter("to_byn")
     def to_byn_filter(amount, currency=BASE_CURRENCY):
@@ -50,6 +67,7 @@ def create_app():
             "base_currency": BASE_CURRENCY,
             "currencies": CURRENCIES,
             "usd_rate": usd_rate(),
+            "eur_rate": eur_rate(),
             "today": date.today(),
         }
 

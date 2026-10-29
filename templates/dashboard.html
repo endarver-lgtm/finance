@@ -5,83 +5,131 @@
 
 {% block content %}
 <header class="page-header">
-  <h1>Дашборд</h1>
+  <div>
+    <h1>Дашборд</h1>
+    <p class="muted" style="margin-top: 0.25rem;">Сводка доходов, расходов и баланса за выбранный период</p>
+  </div>
   {{ period_switcher(periods, period, url_for('dashboard.index')) }}
 </header>
 
 <section class="kpi-grid">
-  <article class="card kpi-card">
+  <article class="card kpi-card" style="border-top: 3px solid var(--accent);">
     <span class="kpi-label">Приход</span>
     <div class="kpi-value">{{ money(kpis.income_actual) }}</div>
-    <span class="kpi-sub">план {{ money(kpis.income_plan, 'BYN', false) }}</span>
+    <span class="kpi-sub">
+      <span>План:</span> <strong>{{ money(kpis.income_plan, 'BYN', false, false) }}</strong>
+    </span>
   </article>
-  <article class="card kpi-card">
+
+  <article class="card kpi-card" style="border-top: 3px solid var(--danger);">
     <span class="kpi-label">Расходы</span>
     <div class="kpi-value">{{ money(kpis.expense_actual) }}</div>
-    <span class="kpi-sub">план {{ money(kpis.expense_plan) }}</span>
+    <span class="kpi-sub">
+      <span>Лимит:</span> <strong>{{ money(kpis.expense_plan, 'BYN', false, false) }}</strong>
+      {% if kpis.expense_from_goals > 0 %}
+      <span class="muted" style="display: block; font-size: 0.72rem; margin-top: 0.2rem;">+ {{ money(kpis.expense_from_goals, 'BYN', false, false) }} из копилок</span>
+      {% endif %}
+    </span>
   </article>
-  <article class="card kpi-card">
-    <span class="kpi-label">Свободно</span>
+
+  <article class="card kpi-card" style="border-top: 3px solid {% if kpis.free < 0 %}var(--danger){% else %}var(--accent){% endif %};">
+    <span class="kpi-label">Свободный остаток</span>
     <div class="kpi-value {% if kpis.free < 0 %}text-danger{% else %}text-accent{% endif %}">{{ money(kpis.free) }}</div>
-    <span class="kpi-sub">приход − расходы</span>
   </article>
-  <article class="card kpi-card">
-    <span class="kpi-label">Накоплено</span>
+
+  <article class="card kpi-card" style="border-top: 3px solid #6366f1;">
+    <span class="kpi-label">Всего накоплено</span>
     <div class="kpi-value">{{ money(kpis.saved) }}</div>
-    <span class="kpi-sub">всего по целям</span>
   </article>
+
+  <a href="{{ url_for('debts.index') }}" class="card kpi-card" style="text-decoration: none; border-top: 3px solid #3b82f6; display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <span class="kpi-label">Долги</span>
+      <div class="kpi-value" style="font-size: 1.05rem; font-weight: 700; color: {% if debt_card.balance > 0.005 %}var(--accent){% elif debt_card.balance < -0.005 %}var(--danger){% else %}var(--dark){% endif %}; margin-top: 0.35rem;">
+        {{ debt_card.text }}
+      </div>
+    </div>
+    <span class="kpi-sub" style="color: var(--muted); font-size: 0.75rem; margin-top: 0.5rem;">В раздел долгов →</span>
+  </a>
+
+  <a href="{{ url_for('balance.index') }}" class="card kpi-card" style="text-decoration: none; border-top: 3px solid {% if check_card.is_stale %}#eab308{% else %}#10b981{% endif %}; {% if check_card.is_stale %}background: #fefce8;{% endif %} display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <span class="kpi-label" style="{% if check_card.is_stale %}color: #854d0e;{% endif %}">Сверка остатка</span>
+      <div class="kpi-value" style="font-size: 1.05rem; font-weight: 700; color: {% if check_card.is_stale %}#854d0e{% else %}var(--dark){% endif %}; margin-top: 0.35rem;">
+        {{ check_card.text }}
+      </div>
+    </div>
+    <span class="kpi-sub" style="color: {% if check_card.is_stale %}#a16207{% else %}var(--muted){% endif %}; font-size: 0.75rem; margin-top: 0.5rem;">
+      {% if check_card.is_stale %}Рекомендуется сверить →{% else %}Провести сверку →{% endif %}
+    </span>
+  </a>
 </section>
+
 
 <section class="charts-grid">
   <article class="card chart-card">
     <h2>Расходы по категориям</h2>
     {% if expense_chart %}
-    <canvas id="expenseChart" height="200"></canvas>
+    <div class="chart-box"><canvas id="expenseChart"></canvas></div>
     {% else %}
     {{ empty_state('Нет расходов', 'Добавьте категории в бюджете и спишите траты') }}
     {% endif %}
   </article>
+
   <article class="card chart-card">
     <h2>Приход: план vs факт</h2>
-    <canvas id="incomeChart" height="200"></canvas>
+    <div class="chart-box"><canvas id="incomeChart"></canvas></div>
   </article>
 </section>
 
 <section class="two-col">
   <article class="card">
-    <h2>Конверты — неделя</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+      <h2 style="margin-bottom: 0;">Конверты (неделя)</h2>
+      <a href="{{ url_for('budget.index') }}" class="btn btn-secondary btn-sm">В бюджет →</a>
+    </div>
     {% if envelopes %}
     <ul class="envelope-list">
       {% for e in envelopes %}
       <li class="envelope-item">
         <div class="envelope-head">
-          <span>{{ e.name }}</span>
-          <span>{{ money(e.spent, 'BYN', false) }} / {{ money(e.planned, e.planned_currency) }}</span>
+          <strong style="color: var(--dark);">{{ e.name }}</strong>
+          <span class="money-wrap">{{ money(e.spent, 'BYN', false, false) }}<span class="money-sep">/</span>{{ money(e.planned, e.planned_currency, true, false) }}</span>
         </div>
         <div class="progress-track">
           <div class="progress-fill {% if e.pct >= 90 %}danger{% elif e.pct >= 70 %}warning{% else %}ok{% endif %}" style="width: {{ e.pct }}%"></div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--muted); margin-top: 0.35rem;">
+          <span>{{ e.pct }}% использовано</span>
+          <span>Остаток: {{ money(e.remaining, 'BYN', false, false) }}</span>
         </div>
       </li>
       {% endfor %}
     </ul>
     {% else %}
-    {{ empty_state('Нет конвертов', 'Создайте категории в разделе Бюджет') }}
+    {{ empty_state('Нет конвертов', 'Создайте категории в разделе Бюджет', 'Перейти в бюджет', None) }}
     {% endif %}
   </article>
 
   <article class="card">
-    <h2>Ближайшие приходы</h2>
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+      <h2 style="margin-bottom: 0;">Ожидаемые поступления</h2>
+      <a href="{{ url_for('income.index') }}" class="btn btn-secondary btn-sm">В приходы →</a>
+    </div>
     {% if upcoming %}
     <ul class="upcoming-list">
       {% for u in upcoming %}
       <li class="upcoming-item upcoming-item--regular">
-        <div>
-          <strong>{{ u.name }}</strong>
-          <span class="muted">{{ money(u.fact, 'BYN', false) }} / {{ money(u.planned, u.planned_currency) }}</span>
+        <div class="upcoming-top">
+          <strong style="color: var(--dark);">{{ u.name }}</strong>
+          <span class="badge {% if u.status == 'received' %}badge-ok{% else %}badge-pending{% endif %}">
+            {% if u.status == 'received' %}Получено{% else %}Ожидается{% endif %}
+          </span>
         </div>
-        <span class="badge {% if u.status == 'received' %}badge-ok{% else %}badge-pending{% endif %}">
-          {% if u.status == 'received' %}Получено{% else %}Ожидается{% endif %}
-        </span>
+        <div class="upcoming-sums">
+          <span>План: {{ money(u.planned, u.planned_currency) }}</span>
+          <span>Получено: {{ money(u.fact, 'BYN', false, false) }}</span>
+        </div>
       </li>
       {% endfor %}
     </ul>

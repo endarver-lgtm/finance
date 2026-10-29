@@ -8,20 +8,61 @@
 </header>
 
 <article class="card settings-card">
+  <div class="settings-section">
+    <h2 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.5rem;">Курсы валют Нацбанка (НБРБ)</h2>
+    <p class="muted" style="font-size: 0.825rem; margin-bottom: 1rem; line-height: 1.4;">
+      Автоматическая загрузка официальных курсов с сайта <a href="https://www.nbrb.by/apihelp/exrates" target="_blank" rel="noopener" style="color: inherit; text-decoration: underline;">nbrb.by</a>
+    </p>
+
+    {% if rates_nbrb_date and rates_updated_at %}
+    <p style="font-size: 0.8rem; color: #166534; background: #dcfce7; padding: 0.4rem 0.6rem; border-radius: 6px; margin-bottom: 1rem; display: inline-block;">
+      ✓ Курсы НБРБ на <strong>{{ rates_nbrb_date }}</strong> (получено {{ rates_updated_at }})
+    </p>
+    {% endif %}
+
+    <form method="post" action="{{ url_for('settings.sync_nbrb') }}">
+      <button type="submit" class="btn btn-secondary" style="display: inline-flex; align-items: center; gap: 0.5rem; width: 100%; justify-content: center;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/>
+        </svg>
+        <strong>Загрузить актуальные курсы с НБРБ</strong>
+      </button>
+    </form>
+  </div>
+
   <form method="post">
-    <p class="settings-currency-label">
-      В интерфейсе везде сначала <strong>BYN</strong> (крупно), ниже мелко <strong>≈ $</strong>.
-      В формах выбираете валюту записи (USD/EUR/BYN) — она видна строкой «в записи».
+    <h2 style="font-size: 1.05rem; font-weight: 600; margin-bottom: 0.75rem;">Ручная настройка курсов</h2>
+    <p class="muted" style="font-size: 0.85rem; margin-bottom: 1rem;">
+      В интерфейсе везде сначала <strong>BYN</strong> (крупно), рядом таблеткой — перевод в <strong>≈ $</strong>
+      и исходная валюта операции. Вы можете указать любой курс вручную или сохранить полученный от НБРБ.
     </p>
     <label>Курс USD
-      <input type="number" name="usd_rate" value="{{ usd_rate }}" step="0.01" min="0.01" required>
+      <input type="number" name="usd_rate" value="{{ usd_rate }}" step="0.0001" min="0.0001" required>
+      <span class="form-hint">Сколько BYN за 1 USD</span>
     </label>
-    <p class="muted">Сколько BYN за 1 USD</p>
+
     <label>Курс EUR
-      <input type="number" name="eur_rate" value="{{ eur_rate }}" step="0.01" min="0.01" required>
+      <input type="number" name="eur_rate" value="{{ eur_rate }}" step="0.0001" min="0.0001" required>
+      <span class="form-hint">Сколько BYN за 1 EUR</span>
     </label>
-    <p class="muted">Сколько BYN за 1 EUR</p>
-    <button type="submit" class="btn btn-primary">Сохранить</button>
+
+    <h2 style="font-size: 1.05rem; font-weight: 600; margin: 1.5rem 0 0.75rem;">Долги и Сверка остатка</h2>
+    <label>Человек по умолчанию для долгов
+      <input type="text" name="default_debt_person" value="{{ default_debt_person }}" placeholder="Кент">
+      <span class="form-hint">Имя для быстрых взаимозачётов и списаний</span>
+    </label>
+
+    <label style="display: flex; align-items: flex-start; gap: 0.6rem; cursor: pointer; margin-top: 1rem;">
+      <input type="checkbox" name="savings_in_check" value="1" {% if savings_in_check == '1' %}checked{% endif %} style="margin-top: 0.25rem;">
+      <div>
+        <strong>Включать копилки в сверку остатка</strong>
+        <p class="muted" style="font-size: 0.8rem; margin-top: 0.2rem;">
+          Если включено, при сверке вы вводите все деньги (включая накопления). Если выключено — сверяются только свободные деньги.
+        </p>
+      </div>
+    </label>
+
+    <button type="submit" class="btn btn-primary settings-manual-save" style="width: 100%; margin-top: 1.5rem;">Сохранить настройки</button>
   </form>
 </article>
 {% endblock %}

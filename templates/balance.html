@@ -1,0 +1,194 @@
+{% extends 'base.html' %}
+{% from 'macros.html' import money, empty_state with context %}
+
+{% block title %}Сверка остатка — Финансы{% endblock %}
+
+{% block content %}
+<header class="page-header">
+  <div>
+    <h1>Сверка остатка</h1>
+    <p class="muted" style="margin-top: 0.25rem;">Контроль соответствия между учётом в приложении и реальными деньгами</p>
+  </div>
+  <div class="header-actions">
+    <a href="{{ url_for('settings.index') }}" class="btn btn-secondary btn-sm">
+      Настройка: {% if savings_in_check %}Копилки включены{% else %}Только свободные{% endif %} ⚙
+    </a>
+  </div>
+</header>
+
+<div class="two-col" style="margin-bottom: 2rem;">
+  <!-- Форма новой сверки -->
+  <article class="card">
+    <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 0.75rem;">
+      {% if last_check %}Провести сверку{% else %}Первая (базовая) сверка{% endif %}
+    </h2>
+    <p class="muted" style="font-size: 0.85rem; margin-bottom: 1.25rem;">
+      Пересчитайте наличные и проверьте балансы на банковских картах.
+      {% if savings_in_check %}Учитывайте деньги во всех копилках.{% else %}Учитывайте только свободные деньги (без копилок).{% endif %}
+    </p>
+
+    <form method="post" action="{{ url_for('balance.check_balance') }}">
+      <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.75rem; margin-bottom: 1rem;">
+        <label>BYN (рубли)
+          <input type="number" name="byn" id="input-byn" step="0.01" min="0" placeholder="0.00" oninput="updateLiveTotal();">
+        </label>
+        <label>USD (доллары)
+          <input type="number" name="usd" id="input-usd" step="0.01" min="0" placeholder="0.00" oninput="updateLiveTotal();">
+        </label>
+        <label>EUR (евро)
+          <input type="number" name="eur" id="input-eur" step="0.01" min="0" placeholder="0.00" oninput="updateLiveTotal();">
+        </label>
+      </div>
+
+      <div style="background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 1rem; margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 0.85rem; color: var(--muted);">Итого реально на руках:</span>
+        <strong id="live-total-byn" style="font-size: 1.15rem; color: var(--dark);">0.00 BYN</strong>
+      </div>
+
+      <label>Дата сверки
+        <input type="date" name="date" value="{{ today.isoformat() }}" required>
+      </label>
+
+      {% if last_check %}
+      <label>Действие при обнаружении расхождений
+        <select name="resolution">
+          <option value="expense" selected>При недостаче — списать в «Неучтёнку» (рекомендуется)</option>
+          <option value="income">При избытке — записать разовый приход, при недостаче — в «Неучтёнку»</option>
+          <option value="none">Только зафиксировать сверку (без создания корректировок)</option>
+        </select>
+      </label>
+      {% endif %}
+
+      <label>Комментарий (необязательно)
+        <input type="text" name="comment" placeholder="Например: еженедельный пересчёт">
+      </label>
+
+      <div class="modal-actions" style="margin-top: 1.25rem;">
+        <button type="submit" class="btn btn-primary" style="width: 100%;">
+          {% if last_check %}Зафиксировать сверку{% else %}Сохранить базовую точку{% endif %}
+        </button>
+      </div>
+    </form>
+  </article>
+
+  <!-- Информационная сводка -->
+  <article class="card">
+    <h2 style="font-size: 1.15rem; font-weight: 700; margin-bottom: 1rem;">Текущее состояние</h2>
+    {% if last_check %}
+    <div style="display: flex; flex-direction: column; gap: 1rem;">
+      <div style="border-left: 3px solid var(--accent); padding-left: 0.75rem;">
+        <span class="muted" style="font-size: 0.8rem; display: block;">Последняя сверка</span>
+        <strong style="font-size: 1.05rem;">{{ last_check.date | db_date }}</strong>
+        <span class="muted" style="font-size: 0.8rem; display: block; margin-top: 0.2rem;">
+          Фактический остаток был: {{ money(last_check.real_byn) }}
+        </span>
+      </div>
+
+      {% if preview %}
+      <div style="border-left: 3px solid #6366f1; padding-left: 0.75rem;">
+        <span class="muted" style="font-size: 0.8rem; display: block;">Расчётный остаток на сегодня</span>
+        <strong style="font-size: 1.25rem; color: #4338ca;">{{ money(preview.expected_byn) }}</strong>
+        <span class="muted" style="font-size: 0.8rem; display: block; margin-top: 0.2rem;">
+          Движение средств с прошлой сверки: {% if preview.flows >= 0 %}+{% endif %}{{ money(preview.flows) }}
+        </span>
+      </div>
+      {% endif %}
+
+      <div style="background: #f8fafc; border-radius: 8px; padding: 0.85rem; font-size: 0.825rem; line-height: 1.45; color: var(--muted);">
+        <p style="margin-bottom: 0.4rem;">
+          💡 <strong>Как работает сверка:</strong>
+        </p>
+        <p style="margin-bottom: 0.25rem;">
+          Если на руках окажется меньше ожидаемого — приложение предложит списать разницу в категорию <strong>«Неучтёнка»</strong>.
+        </p>
+        <p>
+          Это убережёт конверты от искажений и сохранит честный баланс.
+        </p>
+      </div>
+    </div>
+    {% else %}
+    <div style="padding: 1rem 0;">
+      <p class="muted" style="font-size: 0.9rem; line-height: 1.5; margin-bottom: 1rem;">
+        Сверка ещё ни разу не проводилась. Внесите фактическую сумму денег на текущий момент, чтобы задать базовую точку отсчёта.
+      </p>
+      <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: 8px; padding: 0.85rem; font-size: 0.85rem; color: #1e40af;">
+        После сохранения базовой точки система начнёт контролировать все приходы, расходы и долги.
+      </div>
+    </div>
+    {% endif %}
+  </article>
+</div>
+
+<!-- История сверок -->
+<section>
+  <h2 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 1rem;">История сверок</h2>
+  {% if checks %}
+  <div class="card table-wrap">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th style="width: 120px;">Дата</th>
+          <th style="width: 160px; text-align: right;">Реально было</th>
+          <th style="width: 160px; text-align: right;">Ожидалось</th>
+          <th style="width: 150px; text-align: right;">Разница</th>
+          <th>Комментарий / Корректировка</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for ch in checks %}
+        <tr>
+          <td style="font-family: var(--font-mono); font-size: 0.825rem; color: var(--muted);">{{ ch.date | db_date }}</td>
+          <td style="text-align: right; font-weight: 600;">{{ money(ch.real_byn) }}</td>
+          <td style="text-align: right; color: var(--muted);">
+            {% if ch.expected_byn is not none %}
+              {{ money(ch.expected_byn) }}
+            {% else %}
+              <span class="badge badge-muted">Базовая точка</span>
+            {% endif %}
+          </td>
+          <td style="text-align: right;">
+            {% if ch.diff_byn is not none %}
+              <span class="{% if ch.diff_byn < -0.005 %}text-danger{% elif ch.diff_byn > 0.005 %}text-accent{% else %}muted{% endif %}" style="font-weight: 700;">
+                {% if ch.diff_byn > 0.005 %}+{% endif %}{{ "%.2f"|format(ch.diff_byn) }} BYN
+              </span>
+            {% else %}
+              —
+            {% endif %}
+          </td>
+          <td>
+            {% if ch.adjust_expense_id %}
+            <span class="badge badge-danger">Неучтёнка: списано</span>
+            {% elif ch.adjust_income_id %}
+            <span class="badge badge-ok">Разовый доход: добавлен</span>
+            {% elif ch.diff_byn is not none and ch.diff_byn|abs <= 0.5 %}
+            <span class="badge badge-ok">✓ Всё сошлось</span>
+            {% elif ch.expected_byn is none %}
+            <span class="badge badge-muted">Старт</span>
+            {% endif %}
+            {% if ch.comment %}
+            <span class="muted" style="margin-left: 0.4rem; font-size: 0.8rem;">{{ ch.comment }}</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ empty_state('История сверок пуста', 'Проведите первую сверку остатка, чтобы контролировать точность учёта') }}
+  {% endif %}
+</section>
+
+<script>
+function updateLiveTotal() {
+  const byn = parseFloat(document.getElementById('input-byn').value) || 0;
+  const usd = parseFloat(document.getElementById('input-usd').value) || 0;
+  const eur = parseFloat(document.getElementById('input-eur').value) || 0;
+  const usdRate = window.FINANCE?.usdRate || 3.27;
+  const eurRate = window.FINANCE?.eurRate || 3.55;
+
+  const total = byn + (usd * usdRate) + (eur * eurRate);
+  document.getElementById('live-total-byn').textContent = total.toFixed(2) + ' BYN';
+}
+</script>
+{% endblock %}

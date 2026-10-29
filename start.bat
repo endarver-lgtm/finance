@@ -18,8 +18,8 @@ if not exist ".venv\Scripts\python.exe" (
   if errorlevel 1 goto :fail
 )
 
-REM DATABASE_URL берётся из .env (см. .env.example) при старте Python.
-set "FLASK_DEBUG=1"
+REM Локальная БД SQLite: finance.db (или DATABASE_PATH в .env)
+set "FLASK_DEBUG=0"
 set "PORT=5000"
 set "OPEN_BROWSER=1"
 set "APP_URL=http://127.0.0.1:%PORT%/"
@@ -32,7 +32,7 @@ if not exist "%USERPROFILE%\Desktop\Finance.lnk" (
 echo.
 echo   Finance tracker
 echo   URL:  %APP_URL%
-echo   DB:   Postgres ^(DATABASE_URL^)
+echo   DB:   SQLite ^(finance.db^)
 echo   Browser opens automatically. Stop: Ctrl+C
 echo.
 

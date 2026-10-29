@@ -1,7 +1,8 @@
-def usage_percent(spent: float, planned: float) -> float:
+def usage_percent(spent: float, planned: float, clamp: bool = False) -> float:
     if planned <= 0:
         return 0.0
-    return min(100.0, round(spent / planned * 100, 1))
+    val = round(spent / planned * 100, 1)
+    return min(100.0, val) if clamp else val
 
 
 def progress_color(pct: float) -> str:

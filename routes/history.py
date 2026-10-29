@@ -39,6 +39,13 @@ def index():
     total_savings = sum(
         to_byn(r["amount"], r.get("currency")) for r in rows if r["kind"] == "savings"
     )
+    total_savings_withdraw = sum(
+        to_byn(r["amount"], r.get("currency")) for r in rows if r["kind"] == "savings_withdraw"
+    )
+    total_debt_delta = sum(
+        to_byn(r["amount"], r.get("currency")) * (1 if r.get("sign") == "+" else -1)
+        for r in rows if r["kind"] == "debt"
+    )
 
     return render_template(
         "history.html",
@@ -54,8 +61,11 @@ def index():
             "income": total_income,
             "expense": total_expense,
             "savings": total_savings,
+            "savings_withdraw": total_savings_withdraw,
+            "debt_delta": total_debt_delta,
             "net": total_income - total_expense,
             "currency": BASE_CURRENCY,
         },
         kind_labels=HISTORY_KIND_LABELS,
     )
+

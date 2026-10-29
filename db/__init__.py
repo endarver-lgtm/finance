@@ -16,7 +16,7 @@ def reset_db():
     """Drop all app tables and recreate empty schema with default settings."""
     with get_db() as conn:
         for table in TABLES_DROP_ORDER:
-            conn.execute(f"DROP TABLE IF EXISTS {table} CASCADE")
+            conn.execute(f"DROP TABLE IF EXISTS {table}")
     init_db()
 
 

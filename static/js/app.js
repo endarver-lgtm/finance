@@ -36,8 +36,9 @@
 
   const chartDefaults = () => {
     if (typeof Chart === 'undefined') return;
-    Chart.defaults.font.family = "'Inter', sans-serif";
+    Chart.defaults.font.family = "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif";
     Chart.defaults.color = '#6b7280';
+    Chart.defaults.maintainAspectRatio = false;
   };
 
   if (document.readyState === 'loading') {

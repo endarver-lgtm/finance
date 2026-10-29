@@ -3,7 +3,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const exp = document.getElementById('expenseChart');
   if (exp && window.chartData.expense.labels.length) {
-    window.financeCharts.bar(exp, window.chartData.expense.labels, window.chartData.expense.values);
+    if (window.chartData.expense.values.some((v) => v > 0)) {
+      window.financeCharts.bar(exp, window.chartData.expense.labels, window.chartData.expense.values);
+    } else {
+      const note = document.createElement('div');
+      note.className = 'chart-empty-note';
+      note.textContent = 'За период ещё нет расходов';
+      exp.closest('.chart-box').replaceWith(note);
+    }
   }
 
   const inc = document.getElementById('incomeChart');

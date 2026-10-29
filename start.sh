@@ -34,19 +34,13 @@ else
   "$PIP" install -r requirements.txt
 fi
 
-if [[ -z "${DATABASE_URL:-}" ]]; then
-  echo "[ERROR] DATABASE_URL is not set."
-  echo "Create a .env file from .env.example and paste your Supabase connection string."
-  exit 1
-fi
-
 export FLASK_DEBUG=1
 export PORT=5000
 
 echo
 echo "  Finance tracker"
 echo "  Open: http://127.0.0.1:${PORT}"
-echo "  DB:   Postgres (DATABASE_URL)"
+echo "  DB:   SQLite (finance.db)"
 echo "  Stop: Ctrl+C"
 echo
 

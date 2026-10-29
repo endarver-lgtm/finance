@@ -39,6 +39,9 @@ HISTORY_KIND_LABELS = {
     "income": "Приход",
     "expense": "Расход",
     "savings": "Накопление",
+    "savings_withdraw": "Снятие из копилки",
+    "debt": "Долг",
 }
+
 
 ONE_TIME_INCOME_LABEL = "Разовый доход"

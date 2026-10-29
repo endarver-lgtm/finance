@@ -16,7 +16,7 @@ def sum_in_range_byn(
 ) -> float:
     sql = f"""
         SELECT amount, currency FROM {table}
-        WHERE {date_col} >= %s AND {date_col} <= %s
+        WHERE {date_col} >= ? AND {date_col} <= ?
     """
     if extra:
         sql += f" AND {extra}"
@@ -41,7 +41,7 @@ def list_income_sources_with_fact(start: date, end: date, *, active_only: bool =
             period_rows = conn.execute(
                 """
                 SELECT amount, currency FROM income_entries
-                WHERE source_id = %s AND date >= %s AND date <= %s
+                WHERE source_id = ? AND date >= ? AND date <= ?
                 """,
                 (s["id"], to_iso(start), to_iso(end)),
             ).fetchall()
@@ -51,7 +51,7 @@ def list_income_sources_with_fact(start: date, end: date, *, active_only: bool =
             all_rows = conn.execute(
                 """
                 SELECT amount, currency FROM income_entries
-                WHERE source_id = %s
+                WHERE source_id = ?
                 """,
                 (s["id"],),
             ).fetchall()
@@ -78,7 +78,7 @@ def create_income_source(name, type_, planned_amount, frequency, currency):
             """
             INSERT INTO income_sources
                 (name, type, planned_amount, currency, frequency, active, created_at)
-            VALUES (%s, %s, %s, %s, %s, 1, %s)
+            VALUES (?, ?, ?, ?, ?, 1, ?)
             """,
             (name, type_, planned_amount, normalize_currency(currency), frequency, now_iso()),
         )
@@ -90,7 +90,7 @@ def create_income_entry(source_id, amount, entry_date, comment, currency):
             """
             INSERT INTO income_entries
                 (source_id, amount, currency, date, comment, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 source_id,
@@ -109,21 +109,7 @@ def list_budget_categories():
     with get_db() as conn:
         return rows_to_dicts(
             conn.execute(
-                "SELECT * FROM budget_categories ORDER BY name"
-            ).fetchall()
-        )
-
-
-def list_budget_entries(category_id: int):
-    with get_db() as conn:
-        return rows_to_dicts(
-            conn.execute(
-                """
-                SELECT * FROM budget_entries
-                WHERE category_id = %s
-                ORDER BY date DESC, id DESC
-                """,
-                (category_id,),
+                "SELECT * FROM budget_categories ORDER BY is_system ASC, track_only ASC, name ASC"
             ).fetchall()
         )
 
@@ -134,7 +120,7 @@ def create_budget_category(name, planned_amount, period, currency):
             """
             INSERT INTO budget_categories
                 (name, planned_amount, currency, period, created_at)
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?)
             """,
             (name, planned_amount, normalize_currency(currency), period, now_iso()),
         )
@@ -146,7 +132,7 @@ def create_budget_entry(category_id, amount, entry_date, comment, currency):
             """
             INSERT INTO budget_entries
                 (category_id, amount, currency, date, comment, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 category_id,
@@ -172,17 +158,9 @@ def list_savings_goals():
 
 def sum_savings_for_goal(goal_id: int, goal_currency: str | None = None) -> float:
     """Накоплено в валюте цели."""
-    from services.currency import convert
+    from services.savings import goal_balance
 
-    goal_currency = normalize_currency(goal_currency or BASE_CURRENCY)
-    with get_db() as conn:
-        rows = conn.execute(
-            "SELECT amount, currency FROM savings_entries WHERE goal_id = %s",
-            (goal_id,),
-        ).fetchall()
-    return round(
-        sum(convert(r["amount"], r["currency"], goal_currency) for r in rows), 2
-    )
+    return goal_balance(goal_id, goal_currency)
 
 
 def list_savings_entries(goal_id: int):
@@ -191,7 +169,7 @@ def list_savings_entries(goal_id: int):
             conn.execute(
                 """
                 SELECT * FROM savings_entries
-                WHERE goal_id = %s
+                WHERE goal_id = ?
                 ORDER BY date DESC, id DESC
                 """,
                 (goal_id,),
@@ -205,7 +183,7 @@ def create_savings_goal(name, type_, target_amount, deadline, currency):
             """
             INSERT INTO savings_goals
                 (name, type, target_amount, currency, deadline, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 name,
@@ -224,7 +202,7 @@ def create_savings_entry(goal_id, amount, entry_date, comment, currency):
             """
             INSERT INTO savings_entries
                 (goal_id, amount, currency, date, comment, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s)
+            VALUES (?, ?, ?, ?, ?, ?)
             """,
             (
                 goal_id,
@@ -248,4 +226,11 @@ def list_history_category_names() -> list[str]:
             names.add(row["name"])
         for row in conn.execute("SELECT name FROM savings_goals"):
             names.add(row["name"])
+        try:
+            for row in conn.execute("SELECT DISTINCT person FROM debts"):
+                if row["person"]:
+                    names.add(row["person"])
+        except Exception:
+            pass
     return sorted(names)
+
