@@ -671,95 +671,9 @@ flowchart TD
 
 ---
 
-## 7. Пути пользователя (User Journeys)
+## 7. Верификация и тестирование
 
-### Journey 5: Совместная жизнь и разделение расходов с соседом
-**Цель**: Вести прозрачные расчеты с соседом по квартире без сложных электронных таблиц, не допуская искажения личного бюджета.
-
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Пользователь
-    actor Kent as Сосед (Кент)
-    participant UI as Интерфейс приложения
-    participant Srv as Сервер (Flask)
-    participant DB as База Данных
-
-    Note over User,Kent: Покупка продуктов на двоих на 80 BYN
-    User->>Kent: Оплачивает картой на кассе 80 BYN
-    User->>UI: Открывает «Бюджет» -> «− Списать» (Продукты)
-    User->>UI: Вводит 80 BYN, чекбокс «Разделить с другим» (моя 40, его 40)
-    UI->>Srv: POST /budget/entry/add (split=true, person=Кент, my=40, his=40)
-    Srv->>DB: INSERT INTO budget_entries (amount=40)
-    Srv->>DB: INSERT INTO debts (kind='i_paid', amount=40, person='Кент')
-    Srv-->>UI: Обновление: в конверте списано 40, на дашборде долг Кента +40 BYN
-    
-    Note over User,Kent: На следующий день Кент платит за доставку пиццы 50 BYN (по 25 BYN)
-    User->>UI: Открывает «Долги» -> «+ Записать долг»
-    User->>UI: Тип «Он заплатил за меня», сумма 25 BYN, коммент «Пицца»
-    UI->>Srv: POST /debts/entry/add (kind='he_paid', amount=25)
-    Srv->>DB: INSERT INTO debts (kind='he_paid', amount=25)
-    Srv-->>UI: Автоматический нетто-зачет: Баланс Кента = +15 BYN (он должен мне 15 BYN)
-    
-    Note over User,Kent: В конце недели Кент переводит 15 BYN на карту
-    User->>UI: Раздел «Долги» -> Кнопка «Он вернул долг» (15 BYN)
-    UI->>Srv: POST /debts/entry/add (kind='repay_from_him', amount=15)
-    Srv->>DB: INSERT INTO debts (kind='repay_from_him', amount=15)
-    Srv-->>UI: Баланс = 0.00 BYN («В расчёте»)
-```
-
-### Journey 6: Еженедельный 5-минутный финансовый чекап
-**Цель**: Убедиться, что виртуальные цифры соответствуют реальным деньгам, и закрыть неделю без «хвостов».
-
-1. **Подготовка**: В воскресенье вечером пользователь открывает приложение со смартфона.
-2. **Переход в раздел «Сверка»**: Через нижнюю панель навигации выбирает «Ещё» $\rightarrow$ «Сверка».
-3. **Ввод реальных остатков**:
-   - Смотрит остаток на зарплатной карте: вводит `420.00 BYN`.
-   - Смотрит наличные в кошельке: вводит `60.00 BYN` (итого BYN: `480.00`).
-   - Вводит валютную заначку: `150.00 USD`.
-   - Экран моментально пересчитывает общую сумму: `969.50 BYN`.
-4. **Оценка расхождения**:
-   - Приложение сообщает: *«Ожидаемый остаток: 974.50 BYN. Расхождение: −5.00 BYN (Недостача)»*.
-   - Пользователь вспоминает, что купил кофе в автомате и забыл внести чек.
-5. **Фиксация**:
-   - Нажимает «Зафиксировать сверку» с опцией автоматической корректировки.
-   - Система вносит $5.00$ BYN в категорию «Неучтёнка».
-6. **Результат**: Финансовая совесть чиста, баланс сверен до копейки, впереди новая спокойная неделя.
-
----
-
-## 8. Спецификация HTTP-маршрутов и API
-
-| Метод | URL | Назначение | Параметры / Тело запроса |
-|---|---|---|---|
-| `GET` | `/` | Главный экран Дашборда | Query: `period` (`day`, `week`, `month`, `year`) |
-| `GET` | `/income/` | Экран источников и факта приходов | Query: `period`, `year`, `month` |
-| `POST` | `/income/source/add` | Создание нового источника дохода | Form: `name`, `type`, `planned_amount`, `currency`, `frequency` |
-| `POST` | `/income/entry/add` | Внесение поступления по источнику | Form: `source_id`, `amount`, `currency`, `date`, `comment` |
-| `POST` | `/income/one-time/add` | Запись внепланового разового дохода | Form: `amount`, `currency`, `date`, `comment` |
-| `GET` | `/budget/` | Экран конвертов бюджета | Query: `period` (`week`, `month`) |
-| `POST` | `/budget/category/add` | Создание нового конверта расходов | Form: `name`, `planned_amount`, `currency`, `period` |
-| `POST` | `/budget/entry/add` | Списание расхода (в т.ч. совместного) | Form: `category_id`, `amount`, `currency`, `date`, `comment`, `is_split`, `split_who`, `split_person`, `my_share`, `his_share` |
-| `GET` | `/savings/` | Экран финансовых целей | — |
-| `POST` | `/savings/goal/add` | Создание цели накопления | Form: `name`, `type`, `target_amount`, `currency`, `deadline` |
-| `POST` | `/savings/entry/add` | Внесение пополнения в цель (`deposit`) | Form: `goal_id`, `amount`, `currency`, `date`, `comment` |
-| `POST` | `/savings/entry/withdraw` | Снятие из копилки (`withdraw_spent` / `withdraw_free`) | Form: `goal_id`, `amount`, `currency`, `date`, `purpose`, `category_id`, `comment` |
-| `POST` | `/savings/entry/delete/<id>` | Удаление записи пополнения/снятия цели | — |
-| `GET` | `/debts/` | Экран баланса долгов и взаиморасчетов | Query: `person` |
-| `POST` | `/debts/entry/add` | Фиксация долга или возврата | Form: `person`, `kind`, `amount`, `currency`, `date`, `comment` |
-| `POST` | `/debts/entry/delete/<id>` | Удаление записи долга | — |
-| `GET` | `/balance/` | Экран сверки с реальным остатком | — |
-| `POST` | `/balance/check` | Проведение акта сверки остатка | Form: `check_date`, `real_byn`, `real_usd`, `real_eur`, `resolution`, `comment` |
-| `GET` | `/history/` | Журнал всех финансовых транзакций | Query: `date_from`, `date_to`, `type`, `category` |
-| `GET, POST` | `/settings/` | Просмотр и сохранение настроек | Form: `usd_rate`, `eur_rate`, `savings_in_check`, `default_debt_person` |
-| `POST` | `/settings/sync-nbrb` | Принудительная синхронизация с НБРБ | Редирект в `/settings` с Flash-сообщением |
-| `GET, POST` | `/settings/api/sync-nbrb` | JSON API синхронизации с НБРБ | Возвращает `{ success: true, usd_rate, eur_rate, ... }` |
-
----
-
-## 9. Верификация и тестирование
-
-Проект снабжен встроенным тестовым набором в `scripts/verify_db.py`, который запускает автоматические тесты бизнес-правил раздела 8 технического задания:
+Проект снабжен встроенным тестовым набором в `scripts/verify_db.py`, который запускает автоматические тесты бизнес-правил:
 - **Smoke-тесты**: Валидация схемы таблиц SQLite/PostgreSQL, дефолтных настроек, системной категории «Неучтёнка» и доступности всех HTTP-эндпоинтов (код 200).
 - **Тест A (Снятие «Потратил»)**: Пополнение копилки, снятие $200$ на расход, проверка баланса цели, создания расхода с `from_goal_id`, неизменности лимита категории (0%) и отсутствия повторного списания из Free.
 - **Тест B (Снятие «Вернуть в свободные»)**: Возврат $100$ из копилки в наличные, увеличение Free на $+100$.
@@ -775,7 +689,7 @@ sequenceDiagram
 
 ---
 
-## 10. Перспективы и Roadmap развития
+## 8. Перспективы и Roadmap развития
 1. **Экспорт и импорт данных**:
    - Выгрузка всей истории операций, актов сверок и долгов в формат CSV/Excel.
    - Импорт банковских выписок (CSV белорусских банков: Альфа-Банк, Приорбанк, МТБанк, Беларусбанк).
