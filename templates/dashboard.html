@@ -65,16 +65,61 @@
 {% endif %}
 
 <section class="kpi-grid">
+  <!-- Чистый поток (бывший Свободный остаток) -->
   <article class="card kpi-card kpi-card--primary">
     <div class="kpi-head">
-      <span class="kpi-label">Свободный остаток</span>
+      <span class="kpi-label" title="Приход минус расходы, взносы и долги за период. Это не сумма на руках.">Чистый поток <small class="text-muted" style="cursor:help;">ⓘ</small></span>
       <span class="kpi-badge {% if kpis.free < 0 %}kpi-badge--danger{% else %}kpi-badge--accent{% endif %}">
         {{ 'дефицит' if kpis.free < 0 else 'в лимите' }}
       </span>
     </div>
     <div class="kpi-value {% if kpis.free < 0 %}text-danger{% else %}text-accent{% endif %}">{{ money(kpis.free) }}</div>
     <div class="kpi-sub">
-      <span>Чистые средства за вычетом расходов и копилок</span>
+      <span>Приход минус расходы, взносы и долги</span>
+    </div>
+  </article>
+
+  <!-- Деньги сейчас (CashNow) -->
+  <article class="card kpi-card">
+    <div class="kpi-head">
+      <span class="kpi-label" title="Фактический расчетный остаток средств на руках на текущую дату">Деньги сейчас</span>
+      <span class="badge {% if cash_now is not none and cash_now >= 0 %}badge-ok{% elif cash_now is not none %}badge-danger{% else %}badge-neutral{% endif %}">
+        {{ 'на руках' if cash_now is not none else 'нет сверок' }}
+      </span>
+    </div>
+    <div class="kpi-value {% if cash_now is not none and cash_now >= 0 %}text-accent{% elif cash_now is not none %}text-danger{% endif %}">
+      {% if cash_now is not none %}{{ money(cash_now) }}{% else %}—{% endif %}
+    </div>
+    <div class="kpi-sub">
+      {% if cash_now is not none %}
+        {% if savings_in_check == 1 and kpis.saved > 0 %}
+        <span>из них в копилках: {{ money(kpis.saved, 'BYN', false, false) }}</span>
+        {% else %}
+        <span>Доступно к распоряжению</span>
+        {% endif %}
+      {% else %}
+        <a href="{{ url_for('balance.index') }}" class="card-link">Сделайте первую сверку →</a>
+      {% endif %}
+    </div>
+  </article>
+
+  <!-- Можно тратить в день (SafePerDay) -->
+  <article class="card kpi-card">
+    <div class="kpi-head">
+      <span class="kpi-label" title="Безопасный лимит ежедневных трат по переменным конвертам до конца периода">Можно в день</span>
+      <span class="badge {% if health.safe_per_day is not none and health.safe_per_day >= 0 %}badge-ok{% elif health.safe_per_day is not none %}badge-danger{% else %}badge-neutral{% endif %}">
+        {{ 'лимит' if health.safe_per_day is not none and health.safe_per_day >= 0 else ('перерасход' if health.safe_per_day is not none else '—') }}
+      </span>
+    </div>
+    <div class="kpi-value {% if health.safe_per_day is not none and health.safe_per_day < 0 %}text-danger{% else %}text-accent{% endif %}">
+      {% if health.safe_per_day is not none %}{{ money(health.safe_per_day) }}{% else %}—{% endif %}
+    </div>
+    <div class="kpi-sub">
+      {% if health.safe_per_day is not none %}
+      <span>Темп: {{ money(health.daily_burn, 'BYN', false, false) }}/дн, прогн: {{ money(health.forecast_month, 'BYN', false, false) }}</span>
+      {% else %}
+      <span>Мало данных для расчета</span>
+      {% endif %}
     </div>
   </article>
 
@@ -180,12 +225,28 @@
           </span>
         </div>
         <div class="progress-track">
-          <div class="progress-fill {% if e.pct >= 95 %}progress-fill--danger{% elif e.pct >= 75 %}progress-fill--warning{% else %}progress-fill--ok{% endif %}" style="width: {{ [e.pct, 100]|min }}%"></div>
+          <div class="progress-fill progress-fill--{{ e.status }}" style="width: {{ [e.pct, 100]|min }}%"></div>
         </div>
         <div class="envelope-foot">
-          <span>{{ e.pct }}% использовано</span>
-          <span>Остаток: {{ money(e.remaining, 'BYN', false, false) }}</span>
+          <span>
+            {% if e.pct > 100 %}
+            <strong class="text-danger">+{{ money(e.spent - e.planned_byn, 'BYN', false, false) }} сверх лимита</strong>
+            {% else %}
+            {{ e.pct }}% использовано
+            {% endif %}
+            {% if e.tempo %}
+            <small class="muted" style="margin-left: 6px;">({{ 'опережение' if e.tempo.ratio > 1.0 else 'в норме' }})</small>
+            {% endif %}
+          </span>
+          <span class="{% if e.remaining < 0 %}text-danger{% endif %}">
+            Остаток: {{ money(e.remaining, 'BYN', false, false) }}
+          </span>
         </div>
+        {% if e.tempo and e.tempo.safe_daily is not none %}
+        <div class="envelope-tempo-hint muted" style="font-size: 11px; margin-top: 4px;">
+          <span>{{ e.tempo.message }}. Можно ещё {{ money(e.tempo.safe_daily, 'BYN', false, false) }}/день.</span>
+        </div>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>

@@ -1,7 +1,7 @@
 from datetime import date
 from db import get_db, get_setting, now_iso, rows_to_dicts
 from services.constants import BASE_CURRENCY
-from services.currency import convert, normalize_currency, to_byn
+from services.currency import compute_entry_fx, convert, normalize_currency, to_byn
 from services.dates import to_iso
 
 
@@ -49,11 +49,11 @@ def balance_total(target_currency: str = BASE_CURRENCY) -> float:
 
 
 def delta_b(date_from: date, date_to: date) -> float:
-    """Изменение баланса долгов за период в BYN."""
+    """Изменение баланса долгов за период в BYN (A1)."""
     with get_db() as conn:
         rows = conn.execute(
             """
-            SELECT amount, currency, kind FROM debts
+            SELECT amount, currency, kind, amount_byn FROM debts
             WHERE date >= ? AND date <= ?
             """,
             (to_iso(date_from), to_iso(date_to)),
@@ -61,7 +61,11 @@ def delta_b(date_from: date, date_to: date) -> float:
 
     delta = 0.0
     for r in rows:
-        amt = to_byn(r["amount"], r["currency"])
+        amt = (
+            float(r["amount_byn"])
+            if ("amount_byn" in r.keys() and r["amount_byn"] is not None)
+            else to_byn(r["amount"], r["currency"])
+        )
         kind = r["kind"]
         if kind in ("i_paid", "repay_to_him"):
             delta += amt
@@ -103,37 +107,40 @@ def add_split(
             if my_share > 0:
                 if not category_id:
                     raise ValueError("Укажите категорию расхода для вашей доли")
+                r_usd, r_eur, byn_val, fx_src = compute_entry_fx(my_share, currency)
                 cursor = conn.execute(
                     """
                     INSERT INTO budget_entries
-                        (category_id, amount, currency, date, comment, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (category_id, amount, currency, date, comment, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (category_id, my_share, currency, entry_date, comment, now_iso()),
+                    (category_id, my_share, currency, entry_date, comment, r_usd, r_eur, byn_val, fx_src, now_iso()),
                 )
                 row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
                 budget_entry_id = row["id"] if row else cursor.lastrowid
 
             if his_share > 0:
+                r_usd, r_eur, byn_val, fx_src = compute_entry_fx(his_share, currency)
                 conn.execute(
                     """
                     INSERT INTO debts
-                        (person, kind, amount, currency, date, comment, budget_entry_id, created_at)
-                    VALUES (?, 'i_paid', ?, ?, ?, ?, ?, ?)
+                        (person, kind, amount, currency, date, comment, budget_entry_id, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+                    VALUES (?, 'i_paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (person, his_share, currency, entry_date, comment, budget_entry_id, now_iso()),
+                    (person, his_share, currency, entry_date, comment, budget_entry_id, r_usd, r_eur, byn_val, fx_src, now_iso()),
                 )
         else:  # paid_by == 'him'
             if my_share > 0:
                 if not category_id:
                     raise ValueError("Укажите категорию расхода для вашей доли")
+                r_usd, r_eur, byn_val, fx_src = compute_entry_fx(my_share, currency)
                 cursor = conn.execute(
                     """
                     INSERT INTO budget_entries
-                        (category_id, amount, currency, date, comment, created_at)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                        (category_id, amount, currency, date, comment, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (category_id, my_share, currency, entry_date, comment, now_iso()),
+                    (category_id, my_share, currency, entry_date, comment, r_usd, r_eur, byn_val, fx_src, now_iso()),
                 )
                 row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
                 budget_entry_id = row["id"] if row else cursor.lastrowid
@@ -141,10 +148,10 @@ def add_split(
                 conn.execute(
                     """
                     INSERT INTO debts
-                        (person, kind, amount, currency, date, comment, budget_entry_id, created_at)
-                    VALUES (?, 'he_paid', ?, ?, ?, ?, ?, ?)
+                        (person, kind, amount, currency, date, comment, budget_entry_id, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+                    VALUES (?, 'he_paid', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
-                    (person, my_share, currency, entry_date, comment, budget_entry_id, now_iso()),
+                    (person, my_share, currency, entry_date, comment, budget_entry_id, r_usd, r_eur, byn_val, fx_src, now_iso()),
                 )
 
     return {
@@ -174,15 +181,16 @@ def add_debt_entry(
 
     person = (person or "").strip() or get_setting("default_debt_person", "Кент")
     currency = normalize_currency(currency)
+    r_usd, r_eur, byn_val, fx_src = compute_entry_fx(amount, currency)
 
     with get_db() as conn:
         cursor = conn.execute(
             """
             INSERT INTO debts
-                (person, kind, amount, currency, date, comment, budget_entry_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, NULL, ?)
+                (person, kind, amount, currency, date, comment, budget_entry_id, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)
             """,
-            (person, kind, amount, currency, entry_date, comment, now_iso()),
+            (person, kind, amount, currency, entry_date, comment, r_usd, r_eur, byn_val, fx_src, now_iso()),
         )
         row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
         return row["id"] if row else cursor.lastrowid
@@ -208,6 +216,8 @@ def update_debt(debt_id: int, person: str, kind: str, amount: float, currency: s
     if amount <= 0:
         raise ValueError("Сумма должна быть больше нуля")
     currency = normalize_currency(currency)
+    r_usd, r_eur, byn_val, fx_src = compute_entry_fx(amount, currency)
+
     with get_db() as conn:
         debt = conn.execute("SELECT budget_entry_id FROM debts WHERE id = ?", (debt_id,)).fetchone()
         if not debt:
@@ -215,19 +225,21 @@ def update_debt(debt_id: int, person: str, kind: str, amount: float, currency: s
         conn.execute(
             """
             UPDATE debts
-            SET person = ?, kind = ?, amount = ?, currency = ?, date = ?, comment = ?
+            SET person = ?, kind = ?, amount = ?, currency = ?, date = ?, comment = ?,
+                rate_usd = ?, rate_eur = ?, amount_byn = ?, fx_source = ?
             WHERE id = ?
             """,
-            (person.strip(), kind, amount, currency, entry_date, comment, debt_id),
+            (person.strip(), kind, amount, currency, entry_date, comment, r_usd, r_eur, byn_val, fx_src, debt_id),
         )
         if debt["budget_entry_id"]:
             conn.execute(
                 """
                 UPDATE budget_entries
-                SET amount = ?, currency = ?, date = ?, comment = ?
+                SET amount = ?, currency = ?, date = ?, comment = ?,
+                    rate_usd = ?, rate_eur = ?, amount_byn = ?, fx_source = ?
                 WHERE id = ?
                 """,
-                (amount, currency, entry_date, comment, debt["budget_entry_id"]),
+                (amount, currency, entry_date, comment, r_usd, r_eur, byn_val, fx_src, debt["budget_entry_id"]),
             )
 
 

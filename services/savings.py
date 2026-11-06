@@ -1,25 +1,25 @@
 from datetime import date
 from db import get_db, now_iso, rows_to_dicts
 from services.constants import BASE_CURRENCY
-from services.currency import convert, normalize_currency, to_byn
+from services.currency import compute_entry_fx, convert_at_entry, normalize_currency, to_byn
 
 
 def goal_balance(goal_id: int, goal_currency: str | None = None) -> float:
-    """Накоплено по цели: sum(deposit) - sum(withdraw_spent) - sum(withdraw_free) в валюте цели."""
+    """Накоплено по цели в валюте цели по курсам записей (A1)."""
     with get_db() as conn:
         goal = conn.execute("SELECT currency FROM savings_goals WHERE id = ?", (goal_id,)).fetchone()
         if not goal:
             return 0.0
         target_currency = normalize_currency(goal_currency or goal["currency"])
         rows = conn.execute(
-            "SELECT amount, currency, kind FROM savings_entries WHERE goal_id = ?",
+            "SELECT amount, currency, kind, rate_usd, rate_eur, amount_byn FROM savings_entries WHERE goal_id = ?",
             (goal_id,),
         ).fetchall()
 
     balance = 0.0
     for r in rows:
         kind = r["kind"] if "kind" in r.keys() and r["kind"] else "deposit"
-        amt_in_target = convert(r["amount"], r["currency"], target_currency)
+        amt_in_target = convert_at_entry(dict(r), target_currency)
         if kind == "deposit":
             balance += amt_in_target
         elif kind in ("withdraw_spent", "withdraw_free"):
@@ -46,6 +46,7 @@ def withdraw_from_goal(
         raise ValueError("Некорректная цель снятия (допустимо: spent или free)")
 
     currency = normalize_currency(currency)
+    r_usd, r_eur, byn_val, fx_src = compute_entry_fx(amount, currency)
 
     with get_db() as conn:
         goal = conn.execute("SELECT * FROM savings_goals WHERE id = ?", (goal_id,)).fetchone()
@@ -54,7 +55,10 @@ def withdraw_from_goal(
 
         goal_cur = normalize_currency(goal["currency"])
         current_saved = goal_balance(goal_id, goal_cur)
-        amount_in_goal_cur = convert(amount, currency, goal_cur)
+        
+        # Check limit in goal's currency using transaction rate
+        temp_entry = {"amount": amount, "currency": currency, "rate_usd": r_usd, "rate_eur": r_eur, "amount_byn": byn_val}
+        amount_in_goal_cur = convert_at_entry(temp_entry, goal_cur)
 
         if amount_in_goal_cur > current_saved + 0.005:
             raise ValueError(
@@ -71,16 +75,15 @@ def withdraw_from_goal(
             if not cat:
                 raise ValueError("Выбранная категория бюджета не найдена")
 
-            # Создаем расход с from_goal_id
+            # Создаем расход с from_goal_id и курсами
             cursor = conn.execute(
                 """
                 INSERT INTO budget_entries
-                    (category_id, amount, currency, date, comment, from_goal_id, created_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                    (category_id, amount, currency, date, comment, from_goal_id, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (category_id, amount, currency, entry_date, comment, goal_id, now_iso()),
+                (category_id, amount, currency, entry_date, comment, goal_id, r_usd, r_eur, byn_val, fx_src, now_iso()),
             )
-            # Fetch last inserted id
             last_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
             budget_entry_id = last_row["id"] if last_row else cursor.lastrowid
 
@@ -88,14 +91,14 @@ def withdraw_from_goal(
         else:
             kind = "withdraw_free"
 
-        # Создаем запись в savings_entries
+        # Создаем запись в savings_entries с курсами
         cursor_savings = conn.execute(
             """
             INSERT INTO savings_entries
-                (goal_id, amount, currency, date, comment, kind, budget_entry_id, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (goal_id, amount, currency, date, comment, kind, budget_entry_id, rate_usd, rate_eur, amount_byn, fx_source, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
-            (goal_id, amount, currency, entry_date, comment, kind, budget_entry_id, now_iso()),
+            (goal_id, amount, currency, entry_date, comment, kind, budget_entry_id, r_usd, r_eur, byn_val, fx_src, now_iso()),
         )
         savings_row = conn.execute("SELECT last_insert_rowid() AS id").fetchone()
         savings_entry_id = savings_row["id"] if savings_row else cursor_savings.lastrowid

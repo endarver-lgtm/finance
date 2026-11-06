@@ -1,87 +1,120 @@
-from datetime import date, timedelta
-from calendar import monthrange
 import json
-import urllib.request
-import urllib.error
+from datetime import date, timedelta
+from typing import Optional
 
-from db import get_db, rows_to_dicts, get_setting
-from services.constants import ONE_TIME_INCOME_LABEL
-from services.currency import to_byn
-from services.dates import add_months, last_n_months, month_label, month_start, period_bounds, to_iso
-from services.planning import category_planned_for_period
+from db import get_db, rows_to_dicts
+from services.constants import (
+    ACCURACY_THRESHOLDS,
+    ADHERENCE_THRESHOLDS,
+    BASE_CURRENCY,
+    ONE_TIME_INCOME_LABEL,
+    RUNWAY_THRESHOLDS,
+    SAVINGS_RATE_THRESHOLDS,
+)
+from services.currency import (
+    convert_at_entry,
+    normalize_currency,
+    to_byn,
+    usd_rate,
+)
+from services.dates import (
+    add_months,
+    last_n_months,
+    month_label,
+    month_start,
+    parse_date,
+    period_bounds,
+    to_iso,
+)
+from services.debts import delta_b
+from services.metrics_core import (
+    PeriodMetrics,
+    get_first_entry_date,
+    get_period_metrics,
+    history_months,
+)
+from services.planning import (
+    budget_planned_for_period,
+    category_planned_for_period,
+    income_planned_for_period,
+    scale_plan,
+)
+from services.progress import envelope_tempo, income_status, progress_color, usage_percent
 from services.repository import sum_in_range_byn
+from services.savings import goal_balance
 
+
+# ==============================================================================
+# Backward-compatible delegation helpers (used by tests & existing routes)
+# ==============================================================================
 
 def income_fact(start: date, end: date) -> float:
-    return sum_in_range_byn("income_entries", "date", start, end)
-
-
-def budget_fact(start: date, end: date) -> float:
-    return budget_fact_own(start, end)
+    """Фактический доход без корректировок сверки (Inc)."""
+    return get_period_metrics(start, end).inc
 
 
 def budget_fact_own(start: date, end: date) -> float:
-    """Собственные расходы (без трат из копилок)."""
-    return sum_in_range_byn(
-        "budget_entries", "date", start, end, "from_goal_id IS NULL"
-    )
+    """Собственные расходы (Exp_own) без трат из копилок и без корректировок сверки."""
+    return get_period_metrics(start, end).exp_own
 
 
 def budget_fact_from_goals(start: date, end: date) -> float:
-    """Расходы, оплаченные из копилок."""
-    return sum_in_range_byn(
-        "budget_entries", "date", start, end, "from_goal_id IS NOT NULL"
-    )
+    """Расходы из копилок (Exp_goal)."""
+    return get_period_metrics(start, end).exp_goal
+
+
+def budget_fact_all(start: date, end: date) -> float:
+    """Все расходы (Exp_all = Exp_own + Exp_goal) — база аналитики трат."""
+    return get_period_metrics(start, end).exp_all
 
 
 def savings_deposits_for_period(start: date, end: date) -> float:
-    """Взносы в копилки за период."""
-    return sum_in_range_byn(
-        "savings_entries", "date", start, end, "kind = 'deposit'"
-    )
+    return get_period_metrics(start, end).dep
 
 
 def savings_withdraw_free_for_period(start: date, end: date) -> float:
-    """Возврат из копилок в свободные средства за период."""
-    return sum_in_range_byn(
-        "savings_entries", "date", start, end, "kind = 'withdraw_free'"
-    )
+    return get_period_metrics(start, end).w_free
+
+
+def savings_withdraw_spent_for_period(start: date, end: date) -> float:
+    return get_period_metrics(start, end).w_spent
 
 
 def free_cash_flow(start: date, end: date) -> float:
-    """Свободный остаток: Приход - Собственные_расходы - Взносы + Возврат_в_свободные - Delta B."""
-    from services.debts import delta_b
-
-    inc = income_fact(start, end)
-    own_exp = budget_fact_own(start, end)
-    dep = savings_deposits_for_period(start, end)
-    w_free = savings_withdraw_free_for_period(start, end)
-    db = delta_b(start, end)
-
-    return round(inc - own_exp - dep + w_free - db, 2)
+    """Чистый денежный поток (CashFlow). Равен прежнему Free (регресс инвариант)."""
+    return get_period_metrics(start, end).cash_flow
 
 
-def savings_total() -> float:
+def savings_total(target_currency: str = BASE_CURRENCY) -> float:
+    """Суммарный остаток во всех копилках в указанной валюте (по курсам операций)."""
     with get_db() as conn:
-        rows = conn.execute("SELECT amount, currency, kind FROM savings_entries").fetchall()
+        goals = conn.execute("SELECT id, currency FROM savings_goals").fetchall()
+    total_native = 0.0
+    for g in goals:
+        b = goal_balance(g["id"], g["currency"])
+        total_native += to_byn(b, g["currency"])
+    return round(total_native, 2)
+
+
+def reserve_savings_total() -> float:
+    """Суммарный остаток только в копилках типа 'reserve' (C2)."""
+    with get_db() as conn:
+        goals = conn.execute("SELECT id, currency FROM savings_goals WHERE type = 'reserve'").fetchall()
     total = 0.0
-    for r in rows:
-        kind = r["kind"] if "kind" in r.keys() and r["kind"] else "deposit"
-        amt = to_byn(r["amount"], r["currency"] if "currency" in r.keys() else "BYN")
-        if kind == "deposit":
-            total += amt
-        elif kind in ("withdraw_spent", "withdraw_free"):
-            total -= amt
-    return round(max(0.0, total), 2)
+    for g in goals:
+        b = goal_balance(g["id"], g["currency"])
+        total += to_byn(b, g["currency"])
+    return round(total, 2)
 
 
-
-
-def expenses_by_category(start: date, end: date):
+def expenses_by_category(start: date, end: date, include_fixed: bool = True):
+    """Структура расходов по категориям за период (по Exp_all)."""
     with get_db() as conn:
-        cats = rows_to_dicts(
-            conn.execute("SELECT id, name FROM budget_categories").fetchall()
-        )
+        sql = "SELECT id, name, is_fixed FROM budget_categories WHERE track_only = 0"
+        if not include_fixed:
+            sql += " AND is_fixed = 0"
+        cats = rows_to_dicts(conn.execute(sql).fetchall())
+
     result = []
     for c in cats:
         spent = sum_in_range_byn(
@@ -89,90 +122,91 @@ def expenses_by_category(start: date, end: date):
             "date",
             start,
             end,
-            "category_id = ?",
+            "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
             (c["id"],),
         )
-        result.append({"id": c["id"], "name": c["name"], "spent": spent})
+        result.append({"id": c["id"], "name": c["name"], "spent": spent, "is_fixed": c.get("is_fixed", 0)})
     result.sort(key=lambda x: (-x["spent"], x["name"]))
     return result
 
 
 def income_by_months(months):
+    """Динамика доходов по месяцам для графиков."""
     labels, plan, fact = [], [], []
-    with get_db() as conn:
-        sources = conn.execute(
-            """
-            SELECT id, planned_amount, currency, frequency
-            FROM income_sources WHERE active = 1
-            """
-        ).fetchall()
-        received_by_source: dict[int, float] = {}
-        for row in conn.execute(
-            """
-            SELECT source_id, amount, currency FROM income_entries
-            WHERE source_id IS NOT NULL
-            """
-        ).fetchall():
-            sid = row["source_id"]
-            received_by_source[sid] = received_by_source.get(sid, 0.0) + to_byn(
-                row["amount"], row["currency"]
-            )
     for m_start, m_end in months:
         labels.append(month_label(m_start))
-        p = 0.0
-        for s in sources:
-            amt = float(s["planned_amount"])
-            cur = s["currency"] if "currency" in s.keys() else "BYN"
-            planned_byn = to_byn(amt, cur)
-            if s["frequency"] == "monthly":
-                p += planned_byn
-            elif s["frequency"] == "weekly":
-                p += to_byn(amt * 4, cur)
-            elif s["frequency"] == "one_time":
-                received = received_by_source.get(s["id"], 0.0)
-                if received < planned_byn - 0.005 and m_start <= date.today() <= m_end:
-                    p += planned_byn
-        plan.append(round(p, 2))
+        plan.append(income_planned_for_period("month", m_start))
         fact.append(income_fact(m_start, m_end))
     return labels, plan, fact
 
 
-def envelope_progress(period: str = "week", ref: date | None = None):
+def envelope_progress(period: str = "week", ref: Optional[date] = None):
+    """
+    Прогресс конвертов с честной полоской (E1) и расчетом темпа (E2).
+    """
+    ref = ref or date.today()
     start, end = period_bounds(period, ref)
     result = []
     with get_db() as conn:
         cats = rows_to_dicts(
             conn.execute(
-                "SELECT * FROM budget_categories WHERE track_only = 0 ORDER BY name"
+                "SELECT * FROM budget_categories WHERE track_only = 0 ORDER BY is_fixed ASC, name ASC"
             ).fetchall()
         )
+
     for c in cats:
-        planned_native = category_planned_for_period(c, period)
         cur = c.get("currency", "BYN")
+        cat_period = c.get("period", "month")
+        # Масштабирование плана через scale_plan (D1)
+        planned_native = scale_plan(float(c.get("planned_amount") or 0), cat_period, start, end)
         planned_byn = to_byn(planned_native, cur)
+
         spent = sum_in_range_byn(
             "budget_entries",
             "date",
             start,
             end,
-            "category_id = ? AND from_goal_id IS NULL",
+            "category_id = ? AND from_goal_id IS NULL AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
             (c["id"],),
         )
+
+        # E1: Честный процент и остаток без искусственного обнуления
+        pct = usage_percent(spent, planned_byn, clamp=False)
+        remaining = round(planned_byn - spent, 2)
+        pct_status = progress_color(pct)
+
+        # E2: Темп расходования
+        tempo = envelope_tempo(spent, planned_byn, start, end, ref)
+        tempo_status = tempo["status"] if tempo else "ok"
+
+        # Итоговый статус карточки — худший из pct и tempo
+        severity_order = {"danger": 3, "warning": 2, "ok": 1}
+        worst_severity = max(severity_order.get(pct_status, 1), severity_order.get(tempo_status, 1))
+        overall_status = "danger" if worst_severity == 3 else ("warning" if worst_severity == 2 else "ok")
+
         result.append({
             "id": c["id"],
             "name": c["name"],
+            "period": cat_period,
+            "is_fixed": c.get("is_fixed", 0),
             "planned": planned_native,
             "planned_currency": cur,
             "planned_byn": planned_byn,
             "spent": spent,
-            "remaining": max(0, planned_byn - spent),
-            "pct": min(100, round(spent / planned_byn * 100, 1)) if planned_byn > 0 else 0,
+            "remaining": remaining,
+            "pct": pct,
+            "status": overall_status,
+            "pct_status": pct_status,
+            "tempo": tempo,
         })
     return result
 
 
-
-def upcoming_income(ref: date | None = None):
+def upcoming_income(ref: Optional[date] = None):
+    """
+    Календарь ожидаемых поступлений (D2, D3).
+    Учитывает expected_date разовых доходов и pay_days регулярных.
+    """
     ref = ref or date.today()
     start, end = period_bounds("month", ref)
     items = []
@@ -181,68 +215,87 @@ def upcoming_income(ref: date | None = None):
             conn.execute(
                 """
                 SELECT * FROM income_sources
-                WHERE active = 1 AND frequency != 'one_time'
+                WHERE active = 1
                 ORDER BY name
                 """
             ).fetchall()
         )
-        for s in sources:
-            entries = conn.execute(
-                """
-                SELECT amount, currency FROM income_entries
-                WHERE source_id = ? AND date >= ? AND date <= ?
-                """,
-                (s["id"], to_iso(start), to_iso(end)),
-            ).fetchall()
-            fact_byn = sum(to_byn(e["amount"], e["currency"]) for e in entries)
-            cur = s.get("currency", "BYN")
-            planned = float(s["planned_amount"])
-            if s["frequency"] == "weekly":
-                planned *= 4
-            planned_byn = to_byn(planned, cur)
+
+    for s in sources:
+        cur = s.get("currency", "BYN")
+        planned_raw = float(s.get("planned_amount") or 0)
+        stype = s.get("type", "regular")
+        freq = s.get("frequency", "monthly")
+        exp_date_str = s.get("expected_date")
+
+        # Суммируем факт за текущий месяц
+        fact = sum_in_range_byn(
+            "income_entries",
+            "date",
+            start,
+            end,
+            "source_id = ? AND id NOT IN (SELECT adjust_income_id FROM balance_checks WHERE adjust_income_id IS NOT NULL)",
+            (s["id"],),
+        )
+
+        if stype == "one_time" or freq == "one_time":
+            # Показываем разовый доход, если он относится к этому месяцу или просрочен
+            exp_d = parse_date(exp_date_str)
+            if not exp_d and s.get("created_at"):
+                exp_d = parse_date(s["created_at"][:10])
+
+            if exp_d and (exp_d <= end or fact > 0):
+                status = income_status(fact, planned_raw, exp_date_str, ref)
+                items.append({
+                    "id": s["id"],
+                    "name": s["name"],
+                    "planned": planned_raw,
+                    "planned_currency": cur,
+                    "fact": fact,
+                    "fact_currency": "BYN",
+                    "status": status,
+                    "expected_date": exp_date_str,
+                    "is_one_time": True,
+                })
+        else:
+            # Регулярный доход
+            planned_scaled = scale_plan(planned_raw, freq, start, end)
+            status = income_status(fact, planned_scaled, None, ref)
             items.append({
                 "id": s["id"],
                 "name": s["name"],
-                "planned": planned,
+                "planned": planned_scaled,
                 "planned_currency": cur,
-                "fact": round(fact_byn, 2),
+                "fact": fact,
                 "fact_currency": "BYN",
-                "status": "received" if fact_byn >= planned_byn else "pending",
+                "status": status,
+                "expected_date": None,
+                "is_one_time": False,
             })
     return items
 
 
-def _date_filter_clause(col: str, date_from, date_to):
-    parts, params = [], []
-    if date_from:
-        parts.append(f"{col} >= ?")
-        params.append(to_iso(date_from))
-    if date_to:
-        parts.append(f"{col} <= ?")
-        params.append(to_iso(date_to))
-    return (" AND ".join(parts), params) if parts else ("1=1", [])
-
-
 def history_rows(
-    date_from: date | None,
-    date_to: date | None,
+    date_from: Optional[date],
+    date_to: Optional[date],
     type_filter: str,
     category_filter: str,
 ):
+    """История всех операций с фильтрацией."""
     rows = []
+    clause, params = _date_filter_clause("e.date", date_from, date_to)
 
     if type_filter in ("", "income"):
-        clause, params = _date_filter_clause("e.date", date_from, date_to)
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT e.id, e.date, e.amount, e.currency, e.comment, e.source_id,
+                SELECT e.id, e.date, e.amount, e.currency, e.amount_byn, e.comment, e.source_id,
                        COALESCE(s.name, '{ONE_TIME_INCOME_LABEL}') AS label,
                        'income' AS kind
                 FROM income_entries e
                 LEFT JOIN income_sources s ON s.id = e.source_id
                 WHERE {clause}
-                ORDER BY e.date DESC
+                ORDER BY e.date DESC, e.id DESC
                 """,
                 params,
             ).fetchall():
@@ -252,18 +305,16 @@ def history_rows(
                 rows.append(row)
 
     if type_filter in ("", "expense"):
-        clause, params = _date_filter_clause("e.date", date_from, date_to)
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT e.id, e.date, e.amount, e.currency, e.comment, e.category_id,
-                       c.name AS label, 'expense' AS kind,
-                       g.name AS from_goal_name
+                SELECT e.id, e.date, e.amount, e.currency, e.amount_byn, e.comment, e.category_id,
+                       c.name AS label, 'expense' AS kind, e.from_goal_id, g.name AS goal_name
                 FROM budget_entries e
                 JOIN budget_categories c ON c.id = e.category_id
                 LEFT JOIN savings_goals g ON g.id = e.from_goal_id
                 WHERE {clause}
-                ORDER BY e.date DESC
+                ORDER BY e.date DESC, e.id DESC
                 """,
                 params,
             ).fetchall():
@@ -273,18 +324,18 @@ def history_rows(
                 rows.append(row)
 
     if type_filter in ("", "savings", "savings_withdraw"):
-        clause, params = _date_filter_clause("e.date", date_from, date_to)
+        clause_s, params_s = _date_filter_clause("e.date", date_from, date_to)
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT e.id, e.date, e.amount, e.currency, e.comment, e.goal_id,
+                SELECT e.id, e.date, e.amount, e.currency, e.amount_byn, e.comment, e.goal_id,
                        g.name AS label, e.kind AS entry_kind
                 FROM savings_entries e
                 JOIN savings_goals g ON g.id = e.goal_id
-                WHERE {clause}
-                ORDER BY e.date DESC
+                WHERE {clause_s}
+                ORDER BY e.date DESC, e.id DESC
                 """,
-                params,
+                params_s,
             ).fetchall():
                 row = dict(r)
                 if category_filter and row["label"] != category_filter:
@@ -298,17 +349,17 @@ def history_rows(
                 rows.append(row)
 
     if type_filter in ("", "debt"):
-        clause, params = _date_filter_clause("d.date", date_from, date_to)
+        clause_d, params_d = _date_filter_clause("d.date", date_from, date_to)
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT d.id, d.date, d.amount, d.currency, d.comment, d.person,
+                SELECT d.id, d.date, d.amount, d.currency, d.amount_byn, d.comment, d.person,
                        d.person AS label, 'debt' AS kind, d.kind AS debt_kind
                 FROM debts d
-                WHERE {clause}
-                ORDER BY d.date DESC
+                WHERE {clause_d}
+                ORDER BY d.date DESC, d.id DESC
                 """,
-                params,
+                params_d,
             ).fetchall():
                 row = dict(r)
                 if category_filter and row["label"] != category_filter:
@@ -317,213 +368,460 @@ def history_rows(
                 row["sign"] = "+" if d_kind in ("i_paid", "repay_to_him") else "−"
                 rows.append(row)
 
-    rows.sort(key=lambda x: x["date"], reverse=True)
+    rows.sort(key=lambda x: (x["date"], x["id"]), reverse=True)
     return rows
 
 
+def _date_filter_clause(col: str, date_from, date_to):
+    parts, params = [], []
+    if date_from:
+        parts.append(f"{col} >= ?")
+        params.append(to_iso(date_from))
+    if date_to:
+        parts.append(f"{col} <= ?")
+        params.append(to_iso(date_to))
+    return (" AND ".join(parts), params) if parts else ("1=1", [])
+
+
 # ==============================================================================
-# Comprehensive Financial Analysis & Intelligence Engine
+# Comprehensive Analytics Center (Stages C1 - C10)
 # ==============================================================================
 
-def health_metrics(start: date, end: date, ref: date | None = None) -> dict:
-    """Расчёт интегральных метрик финансового здоровья."""
+def calculate_budget_adherence(ref: Optional[date] = None) -> dict:
+    """
+    Дисциплина бюджета по закрытым периодам (C3):
+    - Недельные конверты: последние 8 закрытых недель (ISO).
+    - Месячные конверты: последние 3 закрытых месяца.
+    - Учитываются только периоды, начинающиеся ПОСЛЕ created_at конверта.
+    - Единица учёта: пара (конверт, период), Spent_own <= Limit.
+    """
     ref = ref or date.today()
-    inc = income_fact(start, end)
-    own_exp = budget_fact_own(start, end)
-    dep = savings_deposits_for_period(start, end)
-    w_free = savings_withdraw_free_for_period(start, end)
-    net_saved = max(0.0, dep - w_free)
 
-    # 1. Savings Rate (Норма сбережений)
-    if inc > 0:
-        savings_rate = round((net_saved / inc) * 100, 1)
+    # 1. 8 закрытых недель (пн - вс)
+    this_monday = ref - timedelta(days=ref.weekday())
+    closed_weeks = []
+    for i in range(1, 9):
+        w_end = this_monday - timedelta(days=1 + (i - 1) * 7)
+        w_start = w_end - timedelta(days=6)
+        closed_weeks.append((w_start, w_end))
+
+    # 2. 3 закрытых месяца
+    this_month_start = date(ref.year, ref.month, 1)
+    closed_months = []
+    curr_m_start = this_month_start
+    for _ in range(3):
+        m_end = curr_m_start - timedelta(days=1)
+        m_start = date(m_end.year, m_end.month, 1)
+        closed_months.append((m_start, m_end))
+        curr_m_start = m_start
+
+    with get_db() as conn:
+        cats = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, name, period, planned_amount, currency, created_at
+                FROM budget_categories
+                WHERE track_only = 0 AND planned_amount > 0
+                """
+            ).fetchall()
+        )
+
+    total_pairs = 0
+    in_limit_pairs = 0
+    overruns = []
+
+    for c in cats:
+        cat_cur = c.get("currency", "BYN")
+        cat_limit = to_byn(float(c.get("planned_amount") or 0), cat_cur)
+        if cat_limit <= 0.005:
+            continue
+
+        cat_created_str = (c.get("created_at") or "")[:10]
+        cat_created = parse_date(cat_created_str) or date(2000, 1, 1)
+
+        periods_to_check = closed_weeks if c["period"] == "week" else closed_months
+
+        for p_start, p_end in periods_to_check:
+            # Учитывать только периоды, начавшиеся ПОСЛЕ создания конверта
+            if p_start < cat_created:
+                continue
+
+            spent = sum_in_range_byn(
+                "budget_entries",
+                "date",
+                p_start,
+                p_end,
+                "category_id = ? AND from_goal_id IS NULL AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+                (c["id"],),
+            )
+
+            total_pairs += 1
+            if spent <= cat_limit + 0.005:
+                in_limit_pairs += 1
+            else:
+                overruns.append((spent / cat_limit) - 1.0)
+
+    if total_pairs == 0:
+        return {
+            "adherence_pct": None,
+            "status": "none",
+            "label": "Мало данных",
+            "total_pairs": 0,
+            "in_limit_pairs": 0,
+            "avg_overrun_pct": None,
+        }
+
+    pct = round((in_limit_pairs / total_pairs) * 100, 1)
+    status = "ok" if pct >= ADHERENCE_THRESHOLDS["ok"] else "warning"
+    avg_overrun = round((sum(overruns) / len(overruns)) * 100, 1) if overruns else 0.0
+
+    return {
+        "adherence_pct": pct,
+        "status": status,
+        "label": f"{in_limit_pairs} из {total_pairs}",
+        "total_pairs": total_pairs,
+        "in_limit_pairs": in_limit_pairs,
+        "avg_overrun_pct": avg_overrun,
+    }
+
+
+def calculate_daily_burn_and_forecast(ref: Optional[date] = None) -> dict:
+    """
+    Расчет дневного расхода, «можно тратить в день» и прогноза на месяц (C4).
+    """
+    ref = ref or date.today()
+    m_start, m_end = period_bounds("month", ref)
+
+    passed_days = max(1, (ref - m_start).days + 1)
+    days_in_month = (m_end - m_start).days + 1
+    remaining_days = max(0, (m_end - ref).days)
+
+    with get_db() as conn:
+        var_cats = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, name, period, planned_amount, currency
+                FROM budget_categories
+                WHERE track_only = 0 AND is_fixed = 0
+                """
+            ).fetchall()
+        )
+        fixed_cats = rows_to_dicts(
+            conn.execute(
+                """
+                SELECT id, name, period, planned_amount, currency
+                FROM budget_categories
+                WHERE track_only = 0 AND is_fixed = 1
+                """
+            ).fetchall()
+        )
+
+    # 1. BurnVar: Exp_all по переменным конвертам за месяц на сегодня / прошедшие дни
+    var_cat_ids = [c["id"] for c in var_cats]
+    if var_cat_ids:
+        placeholders = ",".join("?" for _ in var_cat_ids)
+        spent_var_month = sum_in_range_byn(
+            "budget_entries",
+            "date",
+            m_start,
+            ref,
+            f"category_id IN ({placeholders}) AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+            var_cat_ids,
+        )
     else:
-        savings_rate = 0.0
+        spent_var_month = 0.0
 
-    if savings_rate >= 20.0:
-        sr_status, sr_label = "ok", "Отлично"
-    elif savings_rate >= 10.0:
-        sr_status, sr_label = "warning", "Норма"
+    burn_var = round(spent_var_month / passed_days, 2)
+
+    # 2. SafePerDay: Σ по переменным конвертам [лимит_периода − Spent_own] / дни до конца периода
+    safe_daily_total = 0.0
+    for vc in var_cats:
+        vcur = vc.get("currency", "BYN")
+        vperiod = vc.get("period", "month")
+        if vperiod == "week":
+            w_start, w_end = period_bounds("week", ref)
+            days_left = max(1, (w_end - ref).days + 1)
+            vlimit = to_byn(float(vc.get("planned_amount") or 0), vcur)
+            vspent = sum_in_range_byn(
+                "budget_entries",
+                "date",
+                w_start,
+                ref,
+                "category_id = ? AND from_goal_id IS NULL AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+                (vc["id"],),
+            )
+        else:
+            days_left = max(1, (m_end - ref).days + 1)
+            vlimit = to_byn(float(vc.get("planned_amount") or 0), vcur)
+            vspent = sum_in_range_byn(
+                "budget_entries",
+                "date",
+                m_start,
+                ref,
+                "category_id = ? AND from_goal_id IS NULL AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+                (vc["id"],),
+            )
+        safe_daily_total += (vlimit - vspent) / days_left
+
+    safe_per_day = round(safe_daily_total, 2)
+
+    # 3. Forecast месяца:
+    # Exp_all_месяца_на_сегодня + BurnVar * оставшиеся_дни + невыплаченные_фиксированные
+    exp_all_month_today = sum_in_range_byn(
+        "budget_entries",
+        "date",
+        m_start,
+        ref,
+        "id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+    )
+
+    unpaid_fixed = 0.0
+    for fc in fixed_cats:
+        fcur = fc.get("currency", "BYN")
+        flimit = to_byn(float(fc.get("planned_amount") or 0), fcur)
+        fspent = sum_in_range_byn(
+            "budget_entries",
+            "date",
+            m_start,
+            ref,
+            "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+            (fc["id"],),
+        )
+        if fspent <= 0.005:
+            unpaid_fixed += flimit
+        else:
+            unpaid_fixed += max(0.0, flimit - fspent)
+
+    forecast_month = round(exp_all_month_today + (burn_var * remaining_days) + unpaid_fixed, 2)
+
+    return {
+        "burn_var": burn_var,
+        "safe_per_day": safe_per_day,
+        "forecast_month": forecast_month,
+        "passed_days": passed_days,
+        "remaining_days": remaining_days,
+    }
+
+
+def calculate_accounting_accuracy(ref: Optional[date] = None) -> dict:
+    """
+    Точность учёта (C10):
+    Unexplained = Adj_inc + Adj_exp за последние 30 дней.
+    Точность = 100% − Unexplained / (Exp_all + Adj_exp).
+    """
+    ref = ref or date.today()
+    start_30 = ref - timedelta(days=29)
+    m = get_period_metrics(start_30, ref)
+
+    unexplained = round(abs(m.adj_inc) + abs(m.adj_exp), 2)
+    denominator = round(m.exp_all + abs(m.adj_exp), 2)
+
+    if denominator <= 0.005:
+        return {
+            "accuracy_pct": None,
+            "status": "none",
+            "label": "Мало данных",
+            "unexplained_byn": unexplained,
+        }
+
+    unexplained_ratio = (unexplained / denominator) * 100
+    accuracy_pct = max(0.0, min(100.0, round(100.0 - unexplained_ratio, 1)))
+
+    if unexplained_ratio <= ACCURACY_THRESHOLDS["ok"]:
+        status = "ok"
+        label = "Высокая"
+    elif unexplained_ratio <= ACCURACY_THRESHOLDS["warning"]:
+        status = "warning"
+        label = "Норма"
     else:
-        sr_status, sr_label = "danger", "Низкая"
+        status = "danger"
+        label = "Низкая"
 
-    # 2. Runway (Подушка безопасности в месяцах)
-    total_savings = savings_total()
-    # Средний месячный расход за последние 90 дней
-    past_90_start = ref - timedelta(days=90)
-    past_exp = budget_fact_own(past_90_start, ref)
-    if past_exp > 0.01:
-        avg_monthly_exp = past_exp / 3.0
-    elif own_exp > 0.01:
-        avg_monthly_exp = own_exp
+    return {
+        "accuracy_pct": accuracy_pct,
+        "status": status,
+        "label": label,
+        "unexplained_byn": unexplained,
+        "unexplained_pct": round(unexplained_ratio, 1),
+    }
+
+
+def health_metrics(start: date, end: date, ref: Optional[date] = None) -> dict:
+    """
+    Расчёт интегральных метрик финансового здоровья на базе metrics_core (C1, C2, C3, C4, C10).
+    """
+    ref = ref or date.today()
+    m = get_period_metrics(start, end)
+
+    # 1. Savings Rate (C1)
+    if m.inc > 0.005:
+        savings_rate = round((max(0.0, m.net_save) / m.inc) * 100, 1)
+        surplus_rate = round(((m.inc - m.exp_all) / m.inc) * 100, 1)
+        if savings_rate >= SAVINGS_RATE_THRESHOLDS["ok"]:
+            sr_status, sr_label = "ok", "Отлично"
+        elif savings_rate >= SAVINGS_RATE_THRESHOLDS["warning"]:
+            sr_status, sr_label = "warning", "Норма"
+        else:
+            sr_status, sr_label = "danger", "Низкая"
     else:
-        avg_monthly_exp = 1.0
+        savings_rate = None
+        surplus_rate = None
+        sr_status, sr_label = "none", "Мало данных"
 
-    if total_savings > 0 and avg_monthly_exp > 0:
-        runway_months = round(total_savings / avg_monthly_exp, 1)
-    elif total_savings > 0:
-        runway_months = 99.0
+    # 2. Runway (Подушка безопасности в месяцах) (C2)
+    reserve_savings = reserve_savings_total()
+    all_savings = savings_total()
+
+    h_months = history_months(ref, window_days=90)
+    past_90_start = ref - timedelta(days=89)
+    past_90_metrics = get_period_metrics(past_90_start, ref)
+
+    if h_months is not None and h_months > 0:
+        avg_monthly_exp = round(past_90_metrics.exp_all / h_months, 2)
+    elif m.exp_all > 0:
+        avg_monthly_exp = m.exp_all
     else:
-        runway_months = 0.0
+        avg_monthly_exp = None
 
-    if runway_months >= 6.0:
-        rw_status, rw_label = "stellar", "Капитал"
-    elif runway_months >= 3.0:
-        rw_status, rw_label = "ok", "Надёжно"
-    elif runway_months >= 1.0:
-        rw_status, rw_label = "warning", "Минимум"
+    has_reserve_goals = False
+    with get_db() as conn:
+        r_count = conn.execute("SELECT COUNT(*) FROM savings_goals WHERE type = 'reserve'").fetchone()[0]
+        has_reserve_goals = r_count > 0
+
+    if not has_reserve_goals:
+        runway_months = None
+        rw_status, rw_label = "none", "Нет резерва"
+        all_savings_months = None
+    elif avg_monthly_exp is not None and avg_monthly_exp > 0.01:
+        runway_months = round(reserve_savings / max(avg_monthly_exp, 1.0), 1)
+        all_savings_months = round(all_savings / max(avg_monthly_exp, 1.0), 1)
+
+        if runway_months >= RUNWAY_THRESHOLDS["stellar"]:
+            rw_status, rw_label = "stellar", "Капитал"
+        elif runway_months >= RUNWAY_THRESHOLDS["ok"]:
+            rw_status, rw_label = "ok", "Надёжно"
+        elif runway_months >= RUNWAY_THRESHOLDS["warning"]:
+            rw_status, rw_label = "warning", "Минимум"
+        else:
+            rw_status, rw_label = "danger", "Критично"
     else:
-        rw_status, rw_label = "danger", "Критично"
+        runway_months = None
+        rw_status, rw_label = "none", "Мало данных"
+        all_savings_months = None
 
-    # 3. Budget Adherence (Дисциплина конвертов)
-    envelopes = envelope_progress("month", ref)
-    total_env = len(envelopes)
-    in_limit_count = sum(1 for e in envelopes if e["spent"] <= e["planned_byn"] or e["planned_byn"] == 0)
-    adherence_pct = round((in_limit_count / total_env * 100), 1) if total_env > 0 else 100.0
+    # 3. Дисциплина бюджета (C3)
+    adh = calculate_budget_adherence(ref)
 
-    if adherence_pct >= 80.0:
-        adh_status = "ok"
-    elif adherence_pct >= 60.0:
-        adh_status = "warning"
-    else:
-        adh_status = "danger"
+    # 4. Дневной расход и темп (C4)
+    burn_data = calculate_daily_burn_and_forecast(ref)
 
-    # 4. Burn Rate (Средний расход в день)
-    days_count = max(1, (end - start).days + 1)
-    daily_burn = round(own_exp / days_count, 2)
+    # 5. Точность учёта (C10)
+    acc = calculate_accounting_accuracy(ref)
+
+    # Текущий период (неделя) для быстрой плашки дашборда
+    env_curr = envelope_progress("week", ref)
+    in_limit_curr = sum(1 for e in env_curr if e["spent"] <= e["planned_byn"] + 0.005)
 
     return {
         "savings_rate": savings_rate,
         "savings_rate_status": sr_status,
         "savings_rate_label": sr_label,
+        "surplus_rate": surplus_rate,
         "runway_months": runway_months,
         "runway_status": rw_status,
         "runway_label": rw_label,
-        "adherence_pct": adherence_pct,
-        "adherence_status": adh_status,
-        "in_limit_count": in_limit_count,
-        "total_envelopes": total_env,
-        "daily_burn": daily_burn,
-        "total_savings": total_savings,
-        "avg_monthly_exp": round(avg_monthly_exp, 2),
+        "all_savings_months": all_savings_months,
+        "has_reserve_goals": has_reserve_goals,
+        "avg_monthly_exp": avg_monthly_exp or 0.0,
+        "adherence_pct": adh["adherence_pct"],
+        "adherence_status": adh["status"],
+        "adherence_label": adh["label"],
+        "in_limit_count": in_limit_curr,
+        "total_envelopes": len(env_curr),
+        "daily_burn": burn_data["burn_var"],
+        "safe_per_day": burn_data["safe_per_day"],
+        "forecast_month": burn_data["forecast_month"],
+        "accuracy_pct": acc["accuracy_pct"],
+        "accuracy_status": acc["status"],
+        "accuracy_label": acc["label"],
+        "unexplained_byn": acc["unexplained_byn"],
     }
 
 
 def cash_flow_waterfall(start: date, end: date) -> dict:
-    """Данные для водопада денежного потока (Cash Flow Waterfall)."""
-    from services.debts import delta_b
-
-    inc = income_fact(start, end)
-    exp = budget_fact_own(start, end)
-    dep = savings_deposits_for_period(start, end)
-    w_free = savings_withdraw_free_for_period(start, end)
-    net_savings = round(dep - w_free, 2)
-    db = delta_b(start, end)
-    free = free_cash_flow(start, end)
+    """
+    Водопад движения денежных средств (C8) на базе metrics_core:
+    Inc → −Exp_own → −Dep → +W_free → −ΔB (если ≠0) → ±Adj_net (если ≠0) = CashFlow.
+    Инвариант: сумма всех шагов математически строго равна CashFlow.
+    """
+    m = get_period_metrics(start, end)
 
     steps = [
-        {"label": "Доходы", "amount": inc, "type": "positive", "desc": "Все фактические поступления"},
-        {"label": "Расходы", "amount": -exp, "type": "negative", "desc": "Собственные текущие траты"},
-        {"label": "Копилки", "amount": -net_savings, "type": "negative" if net_savings >= 0 else "positive", "desc": "Чистое пополнение копилок"},
+        {"label": "Доходы", "amount": m.inc, "type": "positive", "desc": "Все фактические поступления (без корректировок)"},
+        {"label": "Конверты", "amount": -m.exp_own, "type": "negative", "desc": "Текущие расходы из лимитов конвертов"},
+        {"label": "Взносы", "amount": -m.dep, "type": "negative", "desc": "Пополнения копилок"},
+        {"label": "Возврат из копилок", "amount": m.w_free, "type": "positive", "desc": "Возврат накоплений в свободный остаток"},
     ]
-    if abs(db) > 0.005:
+
+    if abs(m.delta_b) > 0.005:
         steps.append({
             "label": "Долги (Δ)",
-            "amount": -db,
-            "type": "negative" if db > 0 else "positive",
-            "desc": "Изменение баланса долгов за период",
+            "amount": -m.delta_b,
+            "type": "negative" if m.delta_b > 0 else "positive",
+            "desc": "Изменение баланса взаиморасчётов",
         })
+
+    if abs(m.adj_net) > 0.005:
+        steps.append({
+            "label": "Корректировки сверки",
+            "amount": m.adj_net,
+            "type": "positive" if m.adj_net > 0 else "negative",
+            "desc": "Скорректированные расхождения по сверкам остатков",
+        })
+
     steps.append({
-        "label": "Свободный кэш",
-        "amount": free,
+        "label": "Чистый поток",
+        "amount": m.cash_flow,
         "type": "total",
-        "desc": "Чистый остаток средств",
+        "desc": "Результирующий чистый денежный поток периода",
     })
 
     return {
-        "income": inc,
-        "expenses": exp,
-        "savings": net_savings,
-        "debt_delta": db,
-        "free_cash": free,
+        "income": m.inc,
+        "expenses": m.exp_own,
+        "exp_goal": m.exp_goal,
+        "savings": m.net_save,
+        "debt_delta": m.delta_b,
+        "adj_net": m.adj_net,
+        "free_cash": m.cash_flow,
         "steps": steps,
     }
 
 
-def six_months_trends(ref: date | None = None) -> dict:
-    """Глубокая динамика за последние 6 месяцев."""
-    from services.debts import delta_b
-
-    ref = ref or date.today()
-    months = last_n_months(6, ref)
-
-    labels = []
-    income_series = []
-    expense_series = []
-    savings_series = []
-    free_series = []
-    net_flow_series = []
-
-    for m_start, m_end in months:
-        labels.append(month_label(m_start))
-        inc = income_fact(m_start, m_end)
-        exp = budget_fact_own(m_start, m_end)
-        dep = savings_deposits_for_period(m_start, m_end)
-        wf = savings_withdraw_free_for_period(m_start, m_end)
-        sav = round(dep - wf, 2)
-        fr = free_cash_flow(m_start, m_end)
-
-        income_series.append(round(inc, 2))
-        expense_series.append(round(exp, 2))
-        savings_series.append(round(sav, 2))
-        free_series.append(round(fr, 2))
-        net_flow_series.append(round(inc - exp, 2))
-
-    tot_inc = round(sum(income_series), 2)
-    tot_exp = round(sum(expense_series), 2)
-    tot_sav = round(sum(savings_series), 2)
-    tot_free = round(sum(free_series), 2)
-
-    count_m = max(1, len(months))
-    avg_inc = round(tot_inc / count_m, 2)
-    avg_exp = round(tot_exp / count_m, 2)
-    avg_sav = round(tot_sav / count_m, 2)
-    avg_free = round(tot_free / count_m, 2)
-
-    overall_sr = round((tot_sav / tot_inc * 100), 1) if tot_inc > 0 else 0.0
-
-    return {
-        "labels": labels,
-        "income": income_series,
-        "expense": expense_series,
-        "savings": savings_series,
-        "free_cash": free_series,
-        "net_flow": net_flow_series,
-        "summary": {
-            "total_income": tot_inc,
-            "total_expense": tot_exp,
-            "total_savings": tot_sav,
-            "total_free": tot_free,
-            "avg_income": avg_inc,
-            "avg_expense": avg_exp,
-            "avg_savings": avg_sav,
-            "avg_free": avg_free,
-            "overall_savings_rate": overall_sr,
-        },
-    }
-
-
-def category_comparison_and_pareto(ref: date | None = None) -> dict:
-    """Сравнение категорий расходов текущего и прошлого месяцев + анализ Парето."""
+def category_comparison_and_pareto(ref: Optional[date] = None, include_fixed: bool = False) -> dict:
+    """
+    Анализ структуры трат (Парето, C5) и честные сдвиги день-в-день (C6).
+    """
     ref = ref or date.today()
     cur_start, cur_end = period_bounds("month", ref)
 
+    # C6: Честное сравнение день-в-день: с 1-го по d-й день текущего vs прошлого месяца
+    d = ref.day
     prev_month_ref = add_months(cur_start, -1)
-    prev_start, prev_end = period_bounds("month", prev_month_ref)
+    prev_start, prev_full_end = period_bounds("month", prev_month_ref)
+    days_in_prev = (prev_full_end - prev_start).days + 1
+    d_prev = min(d, days_in_prev)
+    prev_end_d = prev_start + timedelta(days=d_prev - 1)
 
     with get_db() as conn:
         cats = rows_to_dicts(
-            conn.execute("SELECT id, name FROM budget_categories ORDER BY name").fetchall()
+            conn.execute(
+                """
+                SELECT id, name, is_fixed FROM budget_categories
+                WHERE track_only = 0
+                ORDER BY name
+                """
+            ).fetchall()
         )
 
     categories_data = []
@@ -531,14 +829,20 @@ def category_comparison_and_pareto(ref: date | None = None) -> dict:
     total_prev = 0.0
 
     for c in cats:
+        # Для Парето берется Exp_all (включая from_goal_id) без корректировок сверки
         spent_cur = sum_in_range_byn(
             "budget_entries", "date", cur_start, cur_end,
-            "category_id = ? AND from_goal_id IS NULL", (c["id"],)
+            "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+            (c["id"],),
         )
+
+        # Сравнение с прошлым месяцем строго день-в-день
         spent_prev = sum_in_range_byn(
-            "budget_entries", "date", prev_start, prev_end,
-            "category_id = ? AND from_goal_id IS NULL", (c["id"],)
+            "budget_entries", "date", prev_start, prev_end_d,
+            "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
+            (c["id"],),
         )
+
         total_cur += spent_cur
         total_prev += spent_prev
 
@@ -553,395 +857,411 @@ def category_comparison_and_pareto(ref: date | None = None) -> dict:
         categories_data.append({
             "id": c["id"],
             "name": c["name"],
+            "is_fixed": c.get("is_fixed", 0),
             "spent_current": round(spent_cur, 2),
             "spent_previous": round(spent_prev, 2),
             "diff": diff,
             "pct_change": pct_change,
         })
 
-    # Сортировка по тратам текущего месяца для Парето
-    categories_data.sort(key=lambda x: x["spent_current"], reverse=True)
+    # C5: Фильтрация для Парето (по умолчанию без фиксированных трат)
+    pareto_candidates = [c for c in categories_data if (include_fixed or c["is_fixed"] == 0)]
+    pareto_candidates.sort(key=lambda x: x["spent_current"], reverse=True)
+    total_pareto = sum(c["spent_current"] for c in pareto_candidates)
 
     running_sum = 0.0
     pareto_core = []
-    for c in categories_data:
-        share = round((c["spent_current"] / total_cur * 100), 1) if total_cur > 0 else 0.0
-        running_sum += c["spent_current"]
-        cum_pct = round((running_sum / total_cur * 100), 1) if total_cur > 0 else 0.0
+    for c in pareto_candidates:
+        c_spent = c["spent_current"]
+        share = round((c_spent / total_pareto * 100), 1) if total_pareto > 0 else 0.0
+        prev_running = running_sum
+        running_sum += c_spent
+        cum_pct = round((running_sum / total_pareto * 100), 1) if total_pareto > 0 else 0.0
         c["share"] = share
         c["cum_pct"] = cum_pct
-        if c["spent_current"] > 0 and (cum_pct <= 80.0 or len(pareto_core) < 2):
-            pareto_core.append(c["name"])
 
-    # Топ роста и топ экономии
-    sorted_by_growth = sorted(categories_data, key=lambda x: x["diff"], reverse=True)
-    top_risers = [c for c in sorted_by_growth if c["diff"] > 0][:3]
-    top_savers = [c for c in sorted(categories_data, key=lambda x: x["diff"]) if c["diff"] < 0][:3]
+        # Ядро — минимальный набор категорий, накопленная доля которого >= 80% (включая пересёкшую порог)
+        if c_spent > 0 and (prev_running / total_pareto * 100 < 80.0 if total_pareto > 0 else False):
+            pareto_core.append(c["name"])
+            c["is_core"] = True
+        else:
+            c["is_core"] = False
+
+    few_categories = len(pareto_candidates) < 5
+
+    # C6: Топ роста и топ экономии (фильтр: обе суммы >= 20 BYN или изменение >= 10%)
+    eligible_shifts = []
+    for c in categories_data:
+        if c["spent_current"] >= 20.0 or c["spent_previous"] >= 20.0 or abs(c["pct_change"]) >= 10.0:
+            if abs(c["diff"]) > 0.005:
+                eligible_shifts.append(c)
+
+    top_risers = sorted([c for c in eligible_shifts if c["diff"] > 0], key=lambda x: x["diff"], reverse=True)[:3]
+    top_savers = sorted([c for c in eligible_shifts if c["diff"] < 0], key=lambda x: x["diff"])[:3]
 
     return {
-        "categories": categories_data,
+        "categories": pareto_candidates,
+        "all_categories": categories_data,
         "total_current": round(total_cur, 2),
         "total_previous": round(total_prev, 2),
         "total_diff": round(total_cur - total_prev, 2),
-        "total_pct_change": round(((total_cur - total_prev) / total_prev * 100), 1) if total_prev > 0 else 0.0,
         "top_risers": top_risers,
         "top_savers": top_savers,
         "pareto_core": pareto_core,
+        "few_categories": few_categories,
+        "comparison_day": d_prev,
     }
 
 
-def goals_analytics(ref: date | None = None) -> list[dict]:
-    """Аналитика и прогноз достижения целей накоплений (ETA)."""
+def goals_analytics(ref: Optional[date] = None) -> list[dict]:
+    """
+    Аналитика и честный прогноз темпа достижения целей накоплений (C7, A1).
+    Все расчеты ведутся в валюте цели по курсам операций.
+    """
     ref = ref or date.today()
     with get_db() as conn:
         goals = rows_to_dicts(conn.execute("SELECT * FROM savings_goals ORDER BY name").fetchall())
 
     result = []
-    months_3_ago = add_months(month_start(ref), -3)
-
     for g in goals:
-        cur = g.get("currency", "BYN")
+        cur = normalize_currency(g.get("currency"))
         target_native = float(g.get("target_amount") or 0.0)
-        target_byn = to_byn(target_native, cur)
+        current_saved = goal_balance(g["id"], cur)
 
         with get_db() as conn:
             entries = conn.execute(
-                "SELECT amount, currency, kind, date FROM savings_entries WHERE goal_id = ?",
-                (g["id"],)
+                """
+                SELECT amount, currency, kind, date, rate_usd, rate_eur, amount_byn
+                FROM savings_entries
+                WHERE goal_id = ?
+                ORDER BY date ASC, id ASC
+                """,
+                (g["id"],),
             ).fetchall()
 
-        saved_byn = 0.0
-        recent_deposits_3m = 0.0
+        if not entries:
+            window_days = 0
+            pace = None
+        else:
+            first_entry_d = parse_date(entries[0]["date"]) or ref
+            days_since_first = max(1, (ref - first_entry_d).days + 1)
+            window_days = min(90, days_since_first)
 
-        for e in entries:
-            amt_byn = to_byn(e["amount"], e["currency"])
-            kind = e["kind"] or "deposit"
-            if kind == "deposit":
-                saved_byn += amt_byn
-                # Считаем взносы за последние 3 месяца
-                if e["date"] >= to_iso(months_3_ago):
-                    recent_deposits_3m += amt_byn
+            if window_days < 14:
+                pace = None
             else:
-                saved_byn -= amt_byn
-                if e["date"] >= to_iso(months_3_ago):
-                    recent_deposits_3m -= amt_byn
+                window_start = ref - timedelta(days=window_days - 1)
+                window_start_str = to_iso(window_start)
+                
+                # Чистое пополнение за окно в валюте цели
+                net_window_cur = 0.0
+                for e in entries:
+                    if e["date"] >= window_start_str:
+                        amt_cur = convert_at_entry(dict(e), cur)
+                        k = e["kind"] or "deposit"
+                        if k == "deposit":
+                            net_window_cur += amt_cur
+                        elif k in ("withdraw_free", "withdraw_spent"):
+                            net_window_cur -= amt_cur
 
-        saved_byn = max(0.0, round(saved_byn, 2))
-        remaining = max(0.0, round(target_byn - saved_byn, 2))
-        pct = min(100.0, round((saved_byn / target_byn * 100), 1)) if target_byn > 0 else 100.0
+                months_in_window = window_days / 30.4375
+                pace = round(net_window_cur / months_in_window, 2)
 
-        # Средний темп в месяц
-        monthly_pace = max(0.0, round(recent_deposits_3m / 3.0, 2))
+        remaining = max(0.0, round(target_native - current_saved, 2))
+        pct = round((current_saved / target_native * 100), 1) if target_native > 0 else 100.0
 
-        eta_months = None
-        eta_date_str = None
+        deadline_str = g.get("deadline")
+        required_monthly = None
         deadline_status = "none"
 
-        if target_byn > 0 and remaining > 0:
-            if monthly_pace > 0.01:
-                eta_months = round(remaining / monthly_pace, 1)
-                months_to_add = int(round(eta_months))
-                est_date = add_months(ref, months_to_add)
-                eta_date_str = month_label(est_date)
-            else:
-                eta_date_str = "При текущем темпе: неизвестно"
+        if target_native > 0 and current_saved >= target_native - 0.005:
+            deadline_status = "reached"
+            eta_date_str = "Достигнуто!"
+        else:
+            if deadline_str:
+                dl_date = parse_date(deadline_str)
+                if dl_date:
+                    if dl_date < ref:
+                        deadline_status = "overdue"
+                    else:
+                        months_left = max(0.1, (dl_date - ref).days / 30.4375)
+                        required_monthly = round(remaining / months_left, 2)
+                        if pace is not None:
+                            deadline_status = "on_track" if pace >= required_monthly - 0.005 else "behind"
+                        else:
+                            deadline_status = "unknown"
 
-        deadline = g.get("deadline")
-        if deadline:
-            try:
-                dl_date = date.fromisoformat(deadline)
-                months_left_to_dl = (dl_date.year - ref.year) * 12 + (dl_date.month - ref.month)
-                if remaining <= 0:
-                    deadline_status = "completed"
-                elif eta_months is not None and eta_months <= months_left_to_dl:
-                    deadline_status = "on_track"
-                else:
-                    deadline_status = "behind"
-            except Exception:
-                deadline_status = "unknown"
-        elif remaining <= 0 and target_byn > 0:
-            deadline_status = "completed"
+            # ETA расчет
+            if pace is not None and pace > 0.005 and remaining > 0:
+                months_needed = remaining / pace
+                eta_days = int(round(months_needed * 30.4375))
+                eta_d = ref + timedelta(days=eta_days)
+                eta_date_str = month_label(eta_d)
+            elif pace is not None and pace <= 0.005:
+                eta_date_str = "При текущем темпе: недостижимо"
+            else:
+                eta_date_str = "Мало данных"
 
         result.append({
             "id": g["id"],
             "name": g["name"],
-            "type": g.get("type", "want"),
+            "type": g["type"],
             "target": target_native,
             "target_currency": cur,
-            "target_byn": target_byn,
-            "saved_byn": saved_byn,
-            "remaining_byn": remaining,
+            "saved_native": current_saved,
+            "saved_byn": to_byn(current_saved, cur),
+            "remaining": remaining,
             "pct": pct,
-            "monthly_pace": monthly_pace,
-            "eta_months": eta_months,
+            "monthly_pace": pace,
+            "required_monthly": required_monthly,
             "eta_date": eta_date_str,
-            "deadline": deadline,
+            "deadline": deadline_str,
             "deadline_status": deadline_status,
         })
-
     return result
 
 
-def generate_smart_insights(ref: date | None = None) -> list[dict]:
-    """Умный эвристический генератор инсайтов и рекомендаций на основе фин-анализа."""
+def six_months_trends(ref: Optional[date] = None) -> dict:
+    """
+    Тренды за 6 месяцев (C9):
+    - Текущий неполный месяц помечается как 'в процессе' и ИСКЛЮЧАЕТСЯ из средних.
+    - Средние считаются строго по закрытым месяцам, где есть данные.
+    """
     ref = ref or date.today()
-    start_m, end_m = period_bounds("month", ref)
+    months = last_n_months(6, ref)
 
-    metrics = health_metrics(start_m, end_m, ref)
-    trends = six_months_trends(ref)
+    labels = []
+    income_series = []
+    expense_series = []
+    savings_series = []
+    net_flow_series = []
+    cash_flow_series = []
+    is_current_series = []
+
+    closed_income = []
+    closed_expense = []
+    closed_savings = []
+    closed_cash_flow = []
+
+    first_entry_d = get_first_entry_date()
+
+    for idx, (m_start, m_end) in enumerate(months):
+        is_cur = (idx == len(months) - 1)
+        labels.append(month_label(m_start))
+        is_current_series.append(is_cur)
+
+        m = get_period_metrics(m_start, m_end)
+
+        income_series.append(m.inc)
+        expense_series.append(m.exp_all)
+        savings_series.append(m.net_save)
+        net_flow_series.append(round(m.inc - m.exp_all, 2))
+        cash_flow_series.append(m.cash_flow)
+
+        # В средние закрытых месяцев включаем только закрытые месяцы, где уже существовали записи
+        if not is_cur:
+            if first_entry_d and m_end >= first_entry_d:
+                closed_income.append(m.inc)
+                closed_expense.append(m.exp_all)
+                closed_savings.append(m.net_save)
+                closed_cash_flow.append(m.cash_flow)
+
+    count_closed = max(1, len(closed_income))
+    avg_inc = round(sum(closed_income) / count_closed, 2) if closed_income else 0.0
+    avg_exp = round(sum(closed_expense) / count_closed, 2) if closed_expense else 0.0
+    avg_sav = round(sum(closed_savings) / count_closed, 2) if closed_savings else 0.0
+    total_six_months_flow = round(sum(closed_cash_flow), 2) if closed_cash_flow else 0.0
+
+    return {
+        "labels": labels,
+        "income": income_series,
+        "expense": expense_series,
+        "savings": savings_series,
+        "net_flow": net_flow_series,
+        "cash_flow": cash_flow_series,
+        "is_current": is_current_series,
+        "summary": {
+            "avg_income": avg_inc,
+            "avg_expense": avg_exp,
+            "avg_savings": avg_sav,
+            "total_free": total_six_months_flow,
+            "total_flow_6m": total_six_months_flow,
+            "closed_months_count": len(closed_income),
+        },
+    }
+
+
+def generate_smart_insights(ref: Optional[date] = None) -> list[dict]:
+    """Генерация умных правил и инсайтов."""
+    ref = ref or date.today()
+    start, end = period_bounds("month", ref)
+    metrics = health_metrics(start, end, ref)
     shifts = category_comparison_and_pareto(ref)
-    goals = goals_analytics(ref)
-    cf = cash_flow_waterfall(start_m, end_m)
 
     insights = []
 
-    # 1. Анализ свободного остатка
-    if cf["free_cash"] < 0:
-        insights.append({
-            "type": "danger",
-            "title": "Дефицит свободного остатка",
-            "message": f"В текущем месяце расходы и сбережения превышают приход на {abs(cf['free_cash']):.2f} BYN. Рекомендуется временно сократить необязательные траты.",
-            "icon": "alert-triangle",
-            "link": "/budget",
-            "link_text": "Оптимизировать бюджет",
-        })
-    elif cf["free_cash"] > 200:
-        insights.append({
-            "type": "success",
-            "title": "Уверенный профицит средств",
-            "message": f"Свободный остаток за месяц составляет +{cf['free_cash']:.2f} BYN. Отличная возможность пополнить финансовую подушку или приблизить крупную цель.",
-            "icon": "trending-up",
-            "link": "/savings",
-            "link_text": "Отправить в копилку",
-        })
-
-    # 2. Норма сбережений (Savings Rate)
-    sr = metrics["savings_rate"]
-    if sr >= 20:
-        insights.append({
-            "type": "success",
-            "title": f"Высокая норма сбережений: {sr}%",
-            "message": "Вы сохраняете более пятой части всех доходов. Это признак высокой финансовой устойчивости.",
-            "icon": "shield-check",
-            "link": "/savings",
-            "link_text": "Мои накопления",
-        })
-    elif sr < 10 and metrics["savings_rate_status"] == "danger":
-        insights.append({
-            "type": "warning",
-            "title": f"Низкая доля сбережений: {sr}%",
-            "message": "Менее 10% дохода направляется в капитал. Постарайтесь откладывать даже небольшую фиксированную сумму сразу в день прихода.",
-            "icon": "pie-chart",
-            "link": "/income",
-            "link_text": "Источники доходов",
-        })
-
-    # 3. Резкие сдвиги в расходах
-    if shifts["top_risers"]:
-        worst = shifts["top_risers"][0]
-        if worst["diff"] >= 20.0:
+    # 1. Сбережения
+    if metrics["savings_rate"] is not None:
+        if metrics["savings_rate"] >= 20:
+            insights.append({
+                "type": "success",
+                "title": f"Норма сбережений: {metrics['savings_rate']}%",
+                "message": "Отличный темп накоплений! Вы откладываете более 20% доходов.",
+                "icon": "trending-up",
+            })
+        elif metrics["savings_rate"] < 10:
             insights.append({
                 "type": "warning",
-                "title": f"Скачок трат в категории «{worst['name']}»",
-                "message": f"Расходы выросли на +{worst['diff']:.2f} BYN ({worst['pct_change']:+.1f}%) относительно прошлого месяца.",
-                "icon": "arrow-up-right",
-                "link": "/budget",
-                "link_text": "Проверить траты",
+                "title": f"Низкая норма сбережений: {metrics['savings_rate']}%",
+                "message": "В копилки уходит менее 10% дохода. Рекомендуется оптимизировать переменные расходы.",
+                "icon": "alert-circle",
+                "link": "/savings",
+                "link_text": "В копилки",
             })
 
-    # 4. Подушка безопасности (Runway)
-    rw = metrics["runway_months"]
-    if rw < 1.0:
-        insights.append({
-            "type": "danger",
-            "title": "Резервный фонд меньше 1 месяца",
-            "message": f"Текущих накоплений хватит лишь на {rw} мес. расходов. Приоритетная задача — сформировать фонд на 3–6 месяцев.",
-            "icon": "umbrella",
-            "link": "/savings",
-            "link_text": "Создать цель «Резерв»",
-        })
-    elif rw >= 6.0:
-        insights.append({
-            "type": "stellar",
-            "title": f"Мощный запас прочности: {rw} мес.",
-            "message": "Подушка безопасности надежно перекрывает полугодовые расходы. Ваши базовые риски закрыты.",
-            "icon": "award",
-            "link": "/savings",
-            "link_text": "Крупные цели",
-        })
+    # 2. Подушка безопасности
+    if metrics["runway_months"] is not None:
+        if metrics["runway_months"] < 1:
+            insights.append({
+                "type": "danger",
+                "title": "Критичный резерв",
+                "message": f"Подушки безопасности хватит всего на {metrics['runway_months']} мес. Рекомендуется довести резерв минимум до 3 месяцев.",
+                "icon": "shield-alert",
+                "link": "/savings",
+                "link_text": "Пополнить резерв",
+            })
+        elif metrics["runway_months"] >= 6:
+            insights.append({
+                "type": "success",
+                "title": "Финансовая крепость",
+                "message": f"Ваш резерв покрывает {metrics['runway_months']} мес. текущих трат. Высокая степень финансовой независимости.",
+                "icon": "shield-check",
+            })
 
-    # 5. Прогресс по целям
-    near_goals = [g for g in goals if 80 <= g["pct"] < 100]
-    if near_goals:
-        target_g = near_goals[0]
+    # 3. Топ роста трат
+    if shifts["top_risers"]:
+        r = shifts["top_risers"][0]
         insights.append({
             "type": "info",
-            "title": f"Цель «{target_g['name']}» близка к финишу ({target_g['pct']}%)",
-            "message": f"Осталось накопить всего {target_g['remaining_byn']:.2f} BYN до закрытия цели!",
-            "icon": "target",
-            "link": "/savings",
-            "link_text": "Пополнить и закрыть",
-        })
-
-    # Если инсайтов мало — добавим полезное наблюдение по дисциплине
-    if len(insights) < 3 and metrics["adherence_pct"] >= 80:
-        insights.append({
-            "type": "success",
-            "title": f"Дисциплина бюджета: {metrics['adherence_pct']}%",
-            "message": f"{metrics['in_limit_count']} из {metrics['total_envelopes']} конвертов остаются в запланированных лимитах.",
-            "icon": "check-circle",
+            "title": f"Всплеск: {r['name']}",
+            "message": f"Траты выросли на {r['diff']:.2f} BYN (+{r['pct_change']}%) по сравнению с тем же днем прошлого месяца.",
+            "icon": "arrow-up-right",
             "link": "/budget",
-            "link_text": "Обзор бюджета",
+            "link_text": "Конверты",
         })
 
-    return insights[:4]
+    return insights
 
 
-def format_ai_markdown(text: str) -> str:
-    """Преобразует базовую markdown-разметку от LLM в безопасный стилизованный HTML."""
-    import re
-    # Заголовки ### и ##
-    res = re.sub(r'###\s+(.+)', r'<h4 class="ai-heading">\1</h4>', text)
-    res = re.sub(r'##\s+(.+)', r'<h3 class="ai-heading">\1</h3>', res)
-    # Жирный шрифт **text**
-    res = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', res)
-    # Списки
-    lines = res.split('\n')
-    out_lines = []
-    in_list = False
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith(('- ', '* ', '• ')):
-            if not in_list:
-                out_lines.append('<ul class="ai-list">')
-                in_list = True
-            content = stripped[2:].strip()
-            out_lines.append(f'<li>{content}</li>')
-        else:
-            if in_list:
-                out_lines.append('</ul>')
-                in_list = False
-            if stripped:
-                out_lines.append(f'<p>{line}</p>')
-            else:
-                out_lines.append('')
-    if in_list:
-        out_lines.append('</ul>')
-    return '\n'.join(out_lines)
-
-
-def generate_ai_review(ref: date | None = None) -> dict:
-    """Генерация комплексного отчета: Groq (Qwen 3.8-27b) или локальный умный эвристический анализ."""
+def generate_ai_review(ref: Optional[date] = None) -> dict:
+    """
+    ИИ-аудит (Этап G):
+    - Снимок для ИИ содержит ТОЛЬКО числа из metrics_core (SR, Surplus, R, Adh, BurnVar, SafePerDay, Forecast, Точность, CashFlow, цели).
+    - Не отправляет имена людей из долгов и приватные комментарии.
+    - Промпт строго запрещает пересчитывать числа.
+    - Эвристический фолбэк при отсутствии API-ключа.
+    """
     import os
     ref = ref or date.today()
     start_m, end_m = period_bounds("month", ref)
 
+    m = get_period_metrics(start_m, end_m)
     metrics = health_metrics(start_m, end_m, ref)
-    trends = six_months_trends(ref)
     shifts = category_comparison_and_pareto(ref)
-    cf = cash_flow_waterfall(start_m, end_m)
+    goals = goals_analytics(ref)
     insights = generate_smart_insights(ref)
 
     api_key = (
         os.environ.get("GROQ_API_KEY", "").strip()
         or os.environ.get("AI_API_KEY", "").strip()
-        or get_setting("ai_api_key", "").strip()
     )
-    ai_model = get_setting("ai_model", "").strip() or "qwen/qwen3.8-27b"
-    ai_provider = get_setting("ai_provider", "").strip() or "groq"
 
-    cur_month_name = month_label(start_m)
-    pareto_str = ", ".join(shifts["pareto_core"][:3]) or "Не определено"
+    data_snapshot = {
+        "savings_rate_pct": metrics["savings_rate"],
+        "surplus_pct": metrics["surplus_rate"],
+        "runway_months": metrics["runway_months"],
+        "runway_status": metrics["runway_label"],
+        "budget_adherence_pct": metrics["adherence_pct"],
+        "burn_var_daily_byn": metrics["daily_burn"],
+        "safe_per_day_byn": metrics["safe_per_day"],
+        "forecast_month_byn": metrics["forecast_month"],
+        "accuracy_pct": metrics["accuracy_pct"],
+        "unexplained_byn": metrics["unexplained_byn"],
+        "cash_flow_month_byn": m.cash_flow,
+        "pareto_core": shifts["pareto_core"][:3],
+        "top_risers": [f"{r['name']} (+{r['diff']} BYN)" for r in shifts["top_risers"][:2]],
+        "top_savers": [f"{s['name']} ({s['diff']} BYN)" for s in shifts["top_savers"][:2]],
+        "goals_summary": [
+            f"{g['name']}: {g['pct']}%, темп ~{g['monthly_pace']} {g['target_currency']}/мес, ETA: {g['eta_date']}"
+            for g in goals[:3]
+        ],
+    }
 
-    llm_text = None
     is_live = False
+    llm_text = None
 
     if api_key:
-        sys_prompt = (
-            "Ты — персональный финансовый консультант в приложении AkselMoney. "
-            "Проанализируй финансовые показатели пользователя за текущий месяц и полугодовую динамику. "
-            "Дай чёткое, ёмкое, структурированное заключение на русском языке (используй emoji, списки и жирный шрифт):\n"
-            "1. 📊 Баланс месяца и кэшфлоу (оценка профицита/дефицита)\n"
-            "2. ⚠️ Главные точки риска или скрытые утечки бюджета\n"
-            "3. 🛡️ Подушка безопасности и темп накоплений\n"
-            "4. 💡 2 конкретных практических шага на ближайшие 2–3 недели."
-        )
-
-        prompt_data = (
-            f"Месяц: {cur_month_name}. "
-            f"Доходы факт: {cf['income']:.2f} BYN, Расходы: {cf['expenses']:.2f} BYN, "
-            f"Отложено в копилки: {cf['savings']:.2f} BYN, Свободный остаток: {cf['free_cash']:.2f} BYN. "
-            f"Норма сбережений: {metrics['savings_rate']}%, Запас подушки: {metrics['runway_months']} мес. "
-            f"(средний расход {metrics['avg_monthly_exp']:.2f} BYN/мес). "
-            f"Дисциплина бюджета: {metrics['adherence_pct']}% ({metrics['in_limit_count']} из {metrics['total_envelopes']} в лимите). "
-            f"Ядро расходов (80%): {pareto_str}. "
-            f"Средний доход за 6 мес: {trends['summary']['avg_income']:.2f} BYN, расход: {trends['summary']['avg_expense']:.2f} BYN, "
-            f"сбережения: {trends['summary']['avg_savings']:.2f} BYN."
+        import urllib.request
+        prompt = (
+            "Ты — строгий финансовый аналитик системы AkselMoney. Проанализируй агрегированные показатели:\n"
+            f"{json.dumps(data_snapshot, ensure_ascii=False, indent=2)}\n\n"
+            "ПРАВИЛА:\n"
+            "1. Используй ТОЛЬКО переданные числа, ничего не пересчитывай.\n"
+            "2. Если показатель равен null, не выдумывай его, укажи что данных недостаточно.\n"
+            "3. Структура ответа (3 лаконичных блока):\n"
+            "   - **Главный финансовый вывод** (1-2 емких предложения о профиците/дефиците и норме сбережений).\n"
+            "   - **Ключевые точки риска** (перерасход по темпу, сдвиги трат или недостаточный резерв).\n"
+            "   - **Конкретные рекомендации** (2-3 четких шага на ближайшие 2 недели).\n"
+            "Форматируй ответ аккуратным Markdown с маркерами."
         )
 
         try:
-            # Groq API endpoint
-            if api_key.startswith("gsk_") or ai_provider == "groq":
-                endpoint = "https://api.groq.com/openai/v1/chat/completions"
-                model_name = ai_model if "qwen" in ai_model or "llama" in ai_model else "qwen/qwen3.8-27b"
-            else:
-                endpoint = "https://openrouter.ai/api/v1/chat/completions"
-                model_name = ai_model or "meta-llama/llama-3.2-3b-instruct:free"
-
-            req_data = {
-                "model": model_name,
+            req_data = json.dumps({
+                "model": "qwen/qwen3.8-27b",
                 "messages": [
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": prompt_data}
+                    {"role": "system", "content": "Ты персональный финансовый аудитор. Будь объективен, строг и точен."},
+                    {"role": "user", "content": prompt},
                 ],
-                "max_tokens": 700,
-                "temperature": 0.4,
-            }
+                "temperature": 0.3,
+                "max_tokens": 600,
+            }).encode("utf-8")
+
             req = urllib.request.Request(
-                endpoint,
-                data=json.dumps(req_data).encode("utf-8"),
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "Mozilla/5.0 AkselMoney/1.0",
-                },
+                "https://api.groq.com/openai/v1/chat/completions",
+                data=req_data,
+                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=12) as resp:
-                resp_json = json.loads(resp.read().decode("utf-8"))
-                llm_raw = resp_json["choices"][0]["message"]["content"].strip()
-                llm_text = format_ai_markdown(llm_raw)
+            with urllib.request.urlopen(req, timeout=12) as response:
+                resp_json = json.loads(response.read().decode("utf-8"))
+                llm_text = resp_json["choices"][0]["message"]["content"]
                 is_live = True
-        except Exception as e:
+        except Exception:
             llm_text = None
 
     if not llm_text:
-        # Автоматическая интеллектуальная сборка на основе правил
-        bullets = []
-        if cf["free_cash"] < 0:
-            bullets.append(f"⚠️ **Дефицит месяца**: расходная часть превысила доходы на {abs(cf['free_cash']):.2f} BYN. Первостепенная мера — сократить траты в топ-статьях ({pareto_str}).")
-        else:
-            bullets.append(f"✅ **Положительный кэшфлоу**: чистый свободный остаток составляет +{cf['free_cash']:.2f} BYN.")
+        # Эвристический детерминированный фолбэк
+        sr_desc = f"{metrics['savings_rate']}%" if metrics["savings_rate"] is not None else "недостаточно данных"
+        rw_desc = f"{metrics['runway_months']} мес." if metrics["runway_months"] is not None else "резерв не задан"
+        safe_desc = f"{metrics['safe_per_day']:.2f} BYN/день"
+        cf_desc = f"{m.cash_flow:.2f} BYN"
 
-        if metrics["savings_rate"] >= 20:
-            bullets.append(f"🟢 **Норма накоплений ({metrics['savings_rate']}%)** на здоровом уровне. Капитал планомерно увеличивается.")
-        else:
-            bullets.append(f"🟡 **Сбережения ({metrics['savings_rate']}%)**: рекомендуемый целевой ориентир — откладывать 15–20% каждого поступления.")
-
-        if metrics["runway_months"] < 2.0:
-            bullets.append(f"🔴 **Подушка безопасности ({metrics['runway_months']} мес.)**: уязвима к непредвиденным обстоятельствам. Направляйте свободный кэш в цель «Резерв».")
-        else:
-            bullets.append(f"🛡️ **Финансовый резерв**: накопленных средств хватит на {metrics['runway_months']} мес. автономной жизни.")
-
-        raw = "\n\n".join(bullets)
-        llm_text = format_ai_markdown(raw)
+        llm_text = (
+            f"### Сводный аудит за {month_label(start_m)}\n\n"
+            f"**Ключевой баланс:** Чистый денежный поток месяца составляет **{cf_desc}**, "
+            f"норма сбережений зафиксирована на уровне **{sr_desc}**.\n\n"
+            f"**Контроль лимитов и темпа:**\n"
+            f"- Допустимый переменный расход: **{safe_desc}**.\n"
+            f"- Подушка безопасности (Runway): **{rw_desc}** ({metrics['runway_label']}).\n"
+            f"- Точность финансового учёта: **{metrics['accuracy_pct'] or '100'}%**.\n\n"
+            f"**Фокус внимания:** Контролируйте ядро расходов ({', '.join(shifts['pareto_core'][:2]) or 'переменные траты'}) "
+            f"и удерживайте дневной расход в рамках безопасного коридора."
+        )
 
     return {
         "text": llm_text,
         "is_ai_live": is_live,
-        "model": "Groq Qwen 3.8-27b" if is_live else "Встроенный аналитик",
+        "model": "Groq Qwen 3.8-27b" if is_live else "Эвристический аудит",
         "insights": insights,
         "metrics": metrics,
     }
-
-

@@ -21,7 +21,7 @@ from services.dates import last_n_months, parse_date, period_bounds
 from services.debts import debt_balance
 from services.forms import parse_period_arg
 from services.planning import budget_planned_for_period, income_planned_for_period
-from services.reconcile import get_last_check
+from services.reconcile import calculate_expected, get_last_check
 
 bp = Blueprint("dashboard", __name__, url_prefix="/")
 
@@ -63,6 +63,14 @@ def index():
         days_ago = None
         chk_text = "Сверок ещё не было"
 
+    # Деньги сейчас (CashNow: расчетный остаток на сегодня с даты последней сверки)
+    savings_in_check = int(get_setting("savings_in_check", "1"))
+    if last_check:
+        exp_info = calculate_expected(0.0, str(ref))
+        cash_now = exp_info.get("expected_byn")
+    else:
+        cash_now = None
+
     hm = health_metrics(start, end, ref)
     insights = generate_smart_insights(ref)
 
@@ -70,6 +78,8 @@ def index():
         "dashboard.html",
         period=period,
         periods=DASHBOARD_PERIODS,
+        cash_now=cash_now,
+        savings_in_check=savings_in_check,
         kpis={
             "income_plan": income_planned_for_period(period, ref),
             "income_actual": income_fact(start, end),

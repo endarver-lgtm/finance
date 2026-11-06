@@ -16,6 +16,8 @@ SCHEMA_STATEMENTS = (
         currency TEXT NOT NULL DEFAULT 'BYN',
         frequency TEXT NOT NULL CHECK (frequency IN ('weekly', 'monthly', 'one_time')),
         active INTEGER NOT NULL DEFAULT 1,
+        expected_date TEXT,
+        pay_days TEXT,
         created_at TEXT NOT NULL
     )
     """,
@@ -27,6 +29,10 @@ SCHEMA_STATEMENTS = (
         currency TEXT NOT NULL DEFAULT 'BYN',
         date TEXT NOT NULL,
         comment TEXT,
+        rate_usd REAL,
+        rate_eur REAL,
+        amount_byn REAL,
+        fx_source TEXT DEFAULT 'entry',
         created_at TEXT NOT NULL,
         FOREIGN KEY (source_id) REFERENCES income_sources(id) ON DELETE SET NULL
     )
@@ -40,6 +46,7 @@ SCHEMA_STATEMENTS = (
         period TEXT NOT NULL CHECK (period IN ('week', 'month')),
         is_system INTEGER NOT NULL DEFAULT 0,
         track_only INTEGER NOT NULL DEFAULT 0,
+        is_fixed INTEGER NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL
     )
     """,
@@ -52,6 +59,10 @@ SCHEMA_STATEMENTS = (
         date TEXT NOT NULL,
         comment TEXT,
         from_goal_id INTEGER,
+        rate_usd REAL,
+        rate_eur REAL,
+        amount_byn REAL,
+        fx_source TEXT DEFAULT 'entry',
         created_at TEXT NOT NULL,
         FOREIGN KEY (category_id) REFERENCES budget_categories(id) ON DELETE CASCADE,
         FOREIGN KEY (from_goal_id) REFERENCES savings_goals(id) ON DELETE SET NULL
@@ -78,6 +89,10 @@ SCHEMA_STATEMENTS = (
         comment TEXT,
         kind TEXT NOT NULL DEFAULT 'deposit',
         budget_entry_id INTEGER,
+        rate_usd REAL,
+        rate_eur REAL,
+        amount_byn REAL,
+        fx_source TEXT DEFAULT 'entry',
         created_at TEXT NOT NULL,
         FOREIGN KEY (goal_id) REFERENCES savings_goals(id) ON DELETE CASCADE,
         FOREIGN KEY (budget_entry_id) REFERENCES budget_entries(id) ON DELETE SET NULL
@@ -93,6 +108,10 @@ SCHEMA_STATEMENTS = (
         date TEXT NOT NULL,
         comment TEXT,
         budget_entry_id INTEGER,
+        rate_usd REAL,
+        rate_eur REAL,
+        amount_byn REAL,
+        fx_source TEXT DEFAULT 'entry',
         created_at TEXT NOT NULL,
         FOREIGN KEY (budget_entry_id) REFERENCES budget_entries(id) ON DELETE CASCADE
     )
@@ -114,6 +133,9 @@ SCHEMA_STATEMENTS = (
         savings_in_check INTEGER NOT NULL DEFAULT 1,
         adjust_expense_id INTEGER,
         adjust_income_id INTEGER,
+        rate_usd REAL,
+        rate_eur REAL,
+        fx_effect_byn REAL DEFAULT 0,
         comment TEXT,
         created_at TEXT NOT NULL,
         FOREIGN KEY (adjust_expense_id) REFERENCES budget_entries(id) ON DELETE SET NULL,

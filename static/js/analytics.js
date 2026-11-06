@@ -51,47 +51,7 @@ function initAnalyticsCharts() {
     trendsChart = window.financeCharts.multiLine(trendsEl, t.labels, datasets);
   }
 
-  // 2. Pareto Donut Chart
-  const paretoEl = document.getElementById('paretoChart');
-  if (paretoEl && window.analyticsData.pareto) {
-    if (paretoChart) {
-      paretoChart.destroy();
-      paretoChart = null;
-    }
-
-    const p = window.analyticsData.pareto;
-    // Filter non-zero items
-    const nonZeroIndices = [];
-    p.values.forEach((v, idx) => {
-      if (v > 0) nonZeroIndices.push(idx);
-    });
-
-    if (nonZeroIndices.length > 0) {
-      const activeLabels = nonZeroIndices.map((i) => p.labels[i]);
-      const activeValues = nonZeroIndices.map((i) => p.values[i]);
-      const palette = window.PARETO_COLORS || [
-        '#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444',
-        '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6',
-        '#84cc16', '#64748b'
-      ];
-      const activeColors = nonZeroIndices.map((_, idx) => palette[idx % palette.length]);
-
-      paretoChart = window.financeCharts.doughnut(paretoEl, activeLabels, activeValues, activeColors);
-
-      // Colorize the dots in the legend list
-      document.querySelectorAll('.donut-legend-dot').forEach((dot, idx) => {
-        dot.style.backgroundColor = palette[idx % palette.length];
-      });
-    } else {
-      const emptyNote = document.createElement('div');
-      emptyNote.className = 'chart-empty-note';
-      emptyNote.textContent = 'Нет расходов за текущий месяц для построения структуры';
-      const box = paretoEl.closest('.chart-box');
-      if (box) box.replaceWith(emptyNote);
-    }
-  }
-
-  // 3. AI refresh button listener
+  // 2. AI refresh button listener
   const btnRefresh = document.getElementById('btnRefreshAi');
   const reviewContent = document.getElementById('aiReviewText');
   const reviewBadge = document.getElementById('aiReviewBadge');

@@ -342,6 +342,11 @@ def main():
         migrate_db(conn)
     all_ok &= check("K. Повторный запуск migrate_db ничего не ломает", True)
 
+    # Этап H: Аналитические тесты H-1 ... H-17
+    from scripts.test_analytics import run_tests as run_analytics_tests
+    h_ok = run_analytics_tests()
+    all_ok &= h_ok
+
     print("\n" + ("=== ВСЕ ПРОВЕРКИ И ТЕСТЫ ПРОЙДЕНЫ УСПЕШНО (OK) ===" if all_ok else "=== ЕСТЬ ОШИБКИ ==="))
     if os.path.exists(test_db):
         try:

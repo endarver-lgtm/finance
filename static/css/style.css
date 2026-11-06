@@ -424,7 +424,8 @@ button, input, select, textarea {
   border-radius: 999px;
   font-weight: 500;
   line-height: 1.2;
-  white-space: nowrap;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .kpi-badge--accent {
@@ -1044,7 +1045,8 @@ button, input, select, textarea {
   border-radius: var(--radius-tag);
   border: 1px solid transparent;
   line-height: 1.4;
-  white-space: nowrap;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
 }
 
 .badge-ok {

@@ -16,61 +16,109 @@
 
 <!-- Секция 1: Метрики финансового здоровья -->
 <section class="kpi-grid">
-  <!-- Норма сбережений -->
+  <!-- Норма сбережений (C1) -->
   <article class="card kpi-card">
     <div class="kpi-head">
       <span class="kpi-label">Норма сбережений</span>
-      <span class="badge {% if health.savings_rate_status == 'ok' %}badge-ok{% elif health.savings_rate_status == 'warning' %}badge-warning{% else %}badge-danger{% endif %}">
+      <span class="badge {% if health.savings_rate_status == 'ok' %}badge-ok{% elif health.savings_rate_status == 'warning' %}badge-warning{% elif health.savings_rate_status == 'danger' %}badge-danger{% else %}badge-muted{% endif %}">
         {{ health.savings_rate_label }}
       </span>
     </div>
     <div class="kpi-value {% if health.savings_rate_status == 'ok' %}text-accent{% elif health.savings_rate_status == 'danger' %}text-danger{% endif %}">
-      {{ health.savings_rate }}%
+      {% if health.savings_rate is not none %}{{ health.savings_rate }}%{% else %}—{% endif %}
     </div>
     <div class="kpi-sub">
-      <span>Доля дохода, направляемая в копилки</span>
+      <span>Доля дохода в копилки</span>
+      {% if health.surplus_rate is not none %}
+      <span class="kpi-sub-extra">Профицит: {{ health.surplus_rate }}%</span>
+      {% endif %}
     </div>
   </article>
 
-  <!-- Подушка безопасности (Runway) -->
+  <!-- Подушка безопасности (C2) -->
   <article class="card kpi-card">
     <div class="kpi-head">
       <span class="kpi-label">Подушка безопасности</span>
-      <span class="badge {% if health.runway_status in ('ok', 'stellar') %}badge-ok{% elif health.runway_status == 'warning' %}badge-warning{% else %}badge-danger{% endif %}">
+      <span class="badge {% if health.runway_status in ('ok', 'stellar') %}badge-ok{% elif health.runway_status == 'warning' %}badge-warning{% elif health.runway_status == 'danger' %}badge-danger{% else %}badge-muted{% endif %}">
         {{ health.runway_label }}
       </span>
     </div>
     <div class="kpi-value">
+      {% if health.runway_months is not none %}
       {{ health.runway_months }} <span class="kpi-val-unit">мес.</span>
+      {% else %}
+      —
+      {% endif %}
     </div>
     <div class="kpi-sub">
-      <span>При средних тратах {{ money(health.avg_monthly_exp, 'BYN', false, false) }}/мес</span>
+      {% if health.has_reserve_goals and health.runway_months is not none %}
+      <span>При тратах {{ money(health.avg_monthly_exp, 'BYN', false, false) }}/мес</span>
+      {% if health.all_savings_months is not none and health.all_savings_months != health.runway_months %}
+      <span class="kpi-sub-extra">со всеми копилками: {{ health.all_savings_months }} мес</span>
+      {% endif %}
+      {% else %}
+      <a href="{{ url_for('savings.index') }}" class="card-link">Создать цель типа «Резерв» →</a>
+      {% endif %}
     </div>
   </article>
 
-  <!-- Дисциплина конвертов -->
+  <!-- Дисциплина бюджета (C3) -->
   <article class="card kpi-card">
     <div class="kpi-head">
       <span class="kpi-label">Дисциплина бюджета</span>
-      <span class="badge {% if health.adherence_status == 'ok' %}badge-ok{% else %}badge-warning{% endif %}">
-        {{ health.in_limit_count }}/{{ health.total_envelopes }}
+      <span class="badge {% if health.adherence_status == 'ok' %}badge-ok{% elif health.adherence_status == 'warning' %}badge-warning{% else %}badge-muted{% endif %}">
+        {{ health.adherence_label }}
       </span>
     </div>
-    <div class="kpi-value">{{ health.adherence_pct }}%</div>
+    <div class="kpi-value">
+      {% if health.adherence_pct is not none %}{{ health.adherence_pct }}%{% else %}—{% endif %}
+    </div>
     <div class="kpi-sub">
-      <span>Конвертов в рамках лимита</span>
+      {% if health.adherence_pct is not none %}
+      <span>По закрытым периодам (сейчас {{ health.in_limit_count }}/{{ health.total_envelopes }})</span>
+      {% else %}
+      <span>Мало закрытых периодов</span>
+      {% endif %}
     </div>
   </article>
 
-  <!-- Скорость трат в день -->
+  <!-- Можно в день / Дневной расход (C4) -->
   <article class="card kpi-card">
     <div class="kpi-head">
-      <span class="kpi-label">Дневной расход</span>
-      <span class="badge badge-neutral">в день</span>
+      <span class="kpi-label">Можно в день</span>
+      <span class="badge {% if health.safe_per_day is not none and health.safe_per_day >= 0 %}badge-ok{% elif health.safe_per_day is not none %}badge-danger{% else %}badge-muted{% endif %}">
+        {{ 'в норме' if health.safe_per_day is not none and health.safe_per_day >= 0 else ('перерасход' if health.safe_per_day is not none else '—') }}
+      </span>
     </div>
-    <div class="kpi-value">{{ money(health.daily_burn, 'BYN', false, false) }}</div>
+    <div class="kpi-value {% if health.safe_per_day is not none and health.safe_per_day < 0 %}text-danger{% else %}text-accent{% endif %}">
+      {% if health.safe_per_day is not none %}{{ money(health.safe_per_day) }}{% else %}—{% endif %}
+    </div>
     <div class="kpi-sub">
+      {% if health.safe_per_day is not none %}
+      <span>Темп: {{ money(health.daily_burn, 'BYN', false, false) }}/дн, прогн: {{ money(health.forecast_month, 'BYN', false, false) }}</span>
+      {% else %}
       <span>Скорость расходования средств</span>
+      {% endif %}
+    </div>
+  </article>
+
+  <!-- Точность учёта (C10) -->
+  <article class="card kpi-card">
+    <div class="kpi-head">
+      <span class="kpi-label">Точность учёта</span>
+      <span class="badge {% if health.accuracy_status == 'ok' %}badge-ok{% elif health.accuracy_status == 'warning' %}badge-warning{% elif health.accuracy_status == 'danger' %}badge-danger{% else %}badge-muted{% endif %}">
+        {{ health.accuracy_label }}
+      </span>
+    </div>
+    <div class="kpi-value {% if health.accuracy_status == 'danger' %}text-danger{% endif %}">
+      {% if health.accuracy_pct is not none %}{{ health.accuracy_pct }}%{% else %}—{% endif %}
+    </div>
+    <div class="kpi-sub">
+      {% if health.unexplained_byn is not none %}
+      <span>Неучтёнка за 30 дн: {{ money(health.unexplained_byn, 'BYN', false, false) }}</span>
+      {% else %}
+      <span>Качество сверок карманов</span>
+      {% endif %}
     </div>
   </article>
 </section>
@@ -80,10 +128,10 @@
   <div class="section-head section-head--waterfall">
     <div>
       <h2>Движение средств за месяц (Cash Flow)</h2>
-      <p class="section-desc">Распределение приходов по расходам, копилкам и остатку</p>
+      <p class="section-desc">Распределение приходов по расходам, копилкам и чистому потоку</p>
     </div>
     <div class="waterfall-header-chip {% if waterfall.free_cash >= 0 %}waterfall-header-chip--accent{% else %}waterfall-header-chip--danger{% endif %}">
-      <span>Остаток:</span>
+      <span>Чистый поток:</span>
       <strong>{{ money(waterfall.free_cash, 'BYN', false, false) }}</strong>
     </div>
   </div>
@@ -102,6 +150,11 @@
       {% endfor %}
     </div>
   </div>
+  {% if waterfall.exp_goal and waterfall.exp_goal > 0 %}
+  <div class="waterfall-footer-note muted" style="font-size: 12px; margin-top: 10px;">
+    <span>🎯 Из копилок потрачено: {{ money(waterfall.exp_goal) }} (целевое потребление, на денежный поток не влияет)</span>
+  </div>
+  {% endif %}
 </section>
 
 <!-- Секция: Тренды 6 месяцев -->
@@ -134,7 +187,7 @@
       <strong class="stat-ribbon-val">{{ money(trends.summary.avg_savings, 'BYN', false, false) }}</strong>
     </div>
     <div class="stat-ribbon-item">
-      <span class="stat-ribbon-label">Свободный остаток (6 мес)</span>
+      <span class="stat-ribbon-label">Чистый поток за 6 мес</span>
       <strong class="stat-ribbon-val {% if trends.summary.total_free >= 0 %}text-accent{% else %}text-danger{% endif %}">
         {{ money(trends.summary.total_free) }}
       </strong>
@@ -144,38 +197,54 @@
 
 <!-- Секция: Структура расходов (Парето) и Сдвиги категорий -->
 <section class="two-col">
-  <!-- Структура трат (Парето) с четким разделением цветов -->
+  <!-- Структура трат (Парето C5) с горизонтальными барами -->
   <article class="card">
     <div class="section-head">
       <div>
         <h2>Структура трат (Парето)</h2>
-        <p class="section-desc">Доли категорий в расходах текущего месяца</p>
+        <p class="section-desc">Доли переменных категорий в расходах текущего месяца</p>
       </div>
     </div>
-    <div class="donut-container">
-      <div class="chart-box chart-box--donut">
-        <canvas id="paretoChart"></canvas>
-      </div>
-      <!-- Четкая цветовая раскладка категорий -->
-      <div class="donut-legend-list">
-        {% for c in shifts.categories %}
-        {% if c.spent_current > 0 %}
-        <div class="donut-legend-row">
-          <div class="donut-legend-info">
-            <span class="donut-legend-dot"></span>
-            <span class="donut-legend-name">{{ c.name }}</span>
+
+    {% if shifts.few_categories %}
+    <div class="alert alert-info" style="font-size: 12px; padding: 8px 12px; margin-bottom: 14px; border-radius: var(--radius-sm); background: rgba(59, 130, 246, 0.08); border: 1px solid rgba(59, 130, 246, 0.2); color: var(--text-primary);">
+      ℹ️ Всего {{ shifts.categories|length }} категорий — правило 80/20 носит ориентировочный характер.
+    </div>
+    {% endif %}
+
+    {% if shifts.categories and shifts.total_current > 0 %}
+    <div class="pareto-bars-list">
+      {% for c in shifts.categories %}
+      {% if c.spent_current > 0 %}
+      <div class="pareto-bar-item" style="margin-bottom: 12px;">
+        <div class="pareto-bar-head" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 13px;">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <strong style="font-weight: 500;">{{ c.name }}</strong>
+            {% if c.is_core %}
+            <span class="badge badge-ok" style="font-size: 10px; padding: 1px 6px;">Ядро</span>
+            {% endif %}
+            {% if c.spent_from_goals and c.spent_from_goals > 0 %}
+            <span title="Траты из копилок" style="cursor: help;">🎯</span>
+            {% endif %}
           </div>
-          <div class="donut-legend-values">
-            <span class="donut-legend-pct">{{ c.share }}%</span>
-            <span class="donut-legend-amt">{{ money(c.spent_current, 'BYN', false, false) }}</span>
+          <div style="text-align: right;">
+            <strong>{{ money(c.spent_current, 'BYN', false, false) }}</strong>
+            <span class="muted" style="font-size: 11.5px; margin-left: 4px;">{{ c.share }}% · накопл: {{ c.cum_pct }}%</span>
           </div>
         </div>
-        {% endif %}
-        {% endfor %}
+        <div class="progress-track" style="height: 6px; background: var(--surface-raised); border-radius: 3px; overflow: hidden;">
+          <div class="progress-fill {% if c.is_core %}progress-fill--accent{% else %}progress-fill--neutral{% endif %}" style="width: {{ c.share }}%; height: 100%; border-radius: 3px; {% if not c.is_core %}background-color: var(--text-muted); opacity: 0.5;{% endif %}"></div>
+        </div>
       </div>
+      {% endif %}
+      {% endfor %}
     </div>
+    {% else %}
+    {{ empty_state('Нет расходов', 'В этом месяце еще не было зарегистрировано расходов') }}
+    {% endif %}
+
     {% if shifts.pareto_core %}
-    <div class="pareto-insight">
+    <div class="pareto-insight" style="margin-top: 14px;">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <span>
         <strong>Ядро расходов:</strong> <em>{{ shifts.pareto_core|join(', ') }}</em> формируют ~80% ваших трат.
@@ -283,8 +352,14 @@
       <div class="goal-forecast-meta">
         <div class="goal-forecast-meta-item">
           <span class="muted">Темп:</span>
-          <strong>~{{ money(g.monthly_pace, 'BYN', false, false) }}&nbsp;/мес</strong>
+          <strong>{% if g.monthly_pace is not none %}~{{ money(g.monthly_pace, g.target_currency, false, false) }}&nbsp;/мес{% else %}— (мало данных){% endif %}</strong>
         </div>
+        {% if g.required_monthly is not none %}
+        <div class="goal-forecast-meta-item">
+          <span class="muted">Нужно:</span>
+          <strong>~{{ money(g.required_monthly, g.target_currency, false, false) }}&nbsp;/мес</strong>
+        </div>
+        {% endif %}
         <div class="goal-forecast-meta-item">
           <span class="muted">Ориентир (ETA):</span>
           <strong class="{% if g.deadline_status == 'behind' %}text-danger{% else %}text-accent{% endif %}">
