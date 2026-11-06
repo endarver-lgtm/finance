@@ -159,13 +159,21 @@
   <a href="{{ url_for('debts.index') }}" class="card kpi-card kpi-card--interactive">
     <div class="kpi-head">
       <span class="kpi-label">Долги</span>
+      {% if uncategorized_count > 0 %}
+      <span class="kpi-badge kpi-badge--danger" title="Неразнесённые долги">{{ uncategorized_count }} не разнесено</span>
+      {% else %}
       <span class="status-indicator"></span>
+      {% endif %}
     </div>
     <div class="kpi-value kpi-value--compact {% if debt_card.balance > 0.005 %}text-accent{% elif debt_card.balance < -0.005 %}text-danger{% endif %}">
       {{ debt_card.text }}
     </div>
     <div class="kpi-sub">
+      {% if friends_card.total_byn > 0 %}
+      <span>У друзей: {{ money(friends_card.total_byn) }} ({{ friends_card.oldest_days }} дн.)</span>
+      {% else %}
       <span class="card-link">Взаиморасчёты →</span>
+      {% endif %}
     </div>
   </a>
 

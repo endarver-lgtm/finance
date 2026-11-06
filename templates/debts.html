@@ -7,12 +7,62 @@
 <header class="page-header">
   <div>
     <h1>Долги</h1>
-    <p class="muted">Взаиморасчёты с людьми и возвраты долгов</p>
+    <p class="muted">Взаиморасчёты с людьми, зачёт общих трат (Этап J) и возвраты</p>
   </div>
   <div class="header-actions">
-    <button type="button" class="btn btn-secondary" data-open="modal-manual-debt">Новая запись</button>
+    <button type="button" class="btn btn-secondary" data-open="modal-batch-debt">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align: -2px; margin-right: 4px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+      Пакетный ввод из заметки
+    </button>
+    <button type="button" class="btn btn-primary" data-open="modal-manual-debt">Новая запись</button>
   </div>
 </header>
+
+{% if uncategorized_count > 0 %}
+<div class="card" style="margin-bottom: 20px; border-left: 4px solid var(--accent, #f59e0b);">
+  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+    <div>
+      <strong style="color: var(--accent, #f59e0b);">⚠️ Неразнесённые долги: {{ uncategorized_count }}</strong>
+      <p class="muted font-sm" style="margin: 4px 0 0 0;">У этих записей не указана категория, поэтому они не зачитываются в аналитике расходов.</p>
+    </div>
+    {% if suggestions %}
+    <span class="badge badge-warning">Есть кандидаты для связи</span>
+    {% endif %}
+  </div>
+
+  {% if suggestions %}
+  <div style="margin-top: 12px; display: grid; gap: 8px;">
+    {% for s in suggestions %}
+    <div style="display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 8px; border: 1px solid rgba(255,255,255,0.07);">
+      <div>
+        <strong>{{ s.debt.person }}</strong>: {{ money(s.debt.amount, s.debt.currency) }} от {{ s.debt.date | db_date }}
+        {% if s.debt.comment %}<span class="muted font-sm">({{ s.debt.comment }})</span>{% endif %}
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        {% if s.suggestions %}
+          {% set top = s.suggestions[0] %}
+          <span class="muted font-sm">
+            {% if top.is_half %}Похоже на 50%:{% else %}Похоже на:{% endif %}
+            <strong>{{ top.category_name }}</strong> {{ money(top.amount) }} от {{ top.date | db_date }}
+          </span>
+          <form method="post" action="{{ url_for('debts.link_debt') }}" style="display: inline;">
+            <input type="hidden" name="debt_id" value="{{ s.debt.id }}">
+            <input type="hidden" name="category_id" value="{{ top.category_id }}">
+            <input type="hidden" name="expense_id" value="{{ top.expense_id }}">
+            <input type="hidden" name="offset_date" value="{{ top.date }}">
+            <button type="submit" class="btn btn-secondary btn-sm" title="Связать долг с расходом">Связать</button>
+          </form>
+        {% endif %}
+        <button type="button" class="btn-icon-subtle" data-open="modal-edit-debt-{{ s.debt.id }}" title="Указать категорию вручную">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+        </button>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</div>
+{% endif %}
 
 {% if persons|length > 1 %}
 <div class="period-switcher" style="margin-bottom: 20px;">
@@ -24,34 +74,63 @@
 </div>
 {% endif %}
 
-<section class="card debt-hero-card">
-  <span class="stat-label">
-    Баланс расчётов с {{ active_person }}
-  </span>
-  <div class="debt-hero-value {% if person_balance > 0 %}text-accent{% elif person_balance < 0 %}text-danger{% else %}muted{% endif %}">
-    {% if person_balance > 0 %}
-      {{ active_person }} должен вам {{ money(person_balance, 'BYN', false, true) }}
-    {% elif person_balance < 0 %}
-      Вы должны {{ active_person }} {{ money(person_balance|abs, 'BYN', false, true) }}
-    {% else %}
-      Расчёт закрыт (0.00 BYN)
+<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px;">
+  <section class="card debt-hero-card" style="margin-bottom: 0;">
+    <span class="stat-label">
+      Баланс расчётов с {{ active_person }}
+    </span>
+    <div class="debt-hero-value {% if person_balance > 0 %}text-accent{% elif person_balance < 0 %}text-danger{% else %}muted{% endif %}">
+      {% if person_balance > 0 %}
+        {{ active_person }} должен вам {{ money(person_balance, 'BYN', false, true) }}
+      {% elif person_balance < 0 %}
+        Вы должны {{ active_person }} {{ money(person_balance|abs, 'BYN', false, true) }}
+      {% else %}
+        Расчёт закрыт (0.00 BYN)
+      {% endif %}
+    </div>
+    {% if persons|length > 1 and total_balance != person_balance %}
+    <p class="muted font-sm" style="margin-bottom: 16px;">
+      Общий баланс по всем людям: <strong>{{ money(total_balance) }}</strong>
+    </p>
     {% endif %}
-  </div>
-  {% if persons|length > 1 and total_balance != person_balance %}
-  <p class="muted font-sm" style="margin-bottom: 16px;">
-    Общий баланс по всем людям: <strong>{{ money(total_balance) }}</strong>
-  </p>
-  {% endif %}
 
-  <div class="debt-hero-actions">
-    <button type="button" class="btn btn-primary" data-open="modal-repay-from">
-      Он вернул мне
-    </button>
-    <button type="button" class="btn btn-secondary" data-open="modal-repay-to">
-      Я вернул ему
-    </button>
-  </div>
-</section>
+    <div class="debt-hero-actions">
+      <button type="button" class="btn btn-primary" data-open="modal-repay-from">
+        Он вернул мне
+      </button>
+      <button type="button" class="btn btn-secondary" data-open="modal-repay-to">
+        Я вернул ему
+      </button>
+    </div>
+  </section>
+
+  <!-- J7: Карточка «Деньги у друзей» -->
+  <section class="card" style="display: flex; flex-direction: column; justify-content: space-between;">
+    <div>
+      <span class="stat-label">Деньги у друзей</span>
+      <div style="font-size: 1.6rem; font-weight: 700; color: var(--accent, #10b981); margin: 6px 0;">
+        {{ money(friends_card.total_byn) }}
+      </div>
+      <p class="muted font-sm" style="margin-bottom: 12px;">
+        {% if friends_card.oldest_days > 0 %}
+          Самый давний долг: <strong>{{ friends_card.oldest_days }} дн. назад</strong>
+        {% else %}
+          Нет активных долгов
+        {% endif %}
+      </p>
+    </div>
+    {% if friends_card.friends %}
+    <div style="font-size: 0.85rem; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 8px;">
+      {% for f in friends_card.friends[:3] %}
+      <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+        <span>{{ f.person }} <span class="muted">({{ f.days_old }} дн.)</span></span>
+        <strong>{{ money(f.balance) }}</strong>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+</div>
 
 {% if debts %}
 <div class="card table-wrap">
@@ -69,7 +148,12 @@
     <tbody>
       {% for d in debts %}
       <tr>
-        <td class="cell-date">{{ d.date | db_date }}</td>
+        <td class="cell-date">
+          {{ d.date | db_date }}
+          {% if d.offset_date and d.offset_date != d.date %}
+          <div class="muted font-xs" title="Дата зачёта в расходы">зачёт: {{ d.offset_date | db_date }}</div>
+          {% endif %}
+        </td>
         <td><strong>{{ d.person }}</strong></td>
         <td>
           <span class="badge {% if d.kind in ('i_paid', 'repay_to_him') %}badge-ok{% else %}badge-pending{% endif %}">
@@ -80,7 +164,9 @@
             {% else %}{{ d.kind }}{% endif %}
           </span>
           {% if d.category_name %}
-          <span class="muted font-sm" style="margin-left: 6px;">({{ d.category_name }})</span>
+          <span class="badge badge-subtle" style="margin-left: 6px;" title="Зачёт в категорию">{{ d.category_name }}</span>
+          {% elif d.kind in ('i_paid', 'he_paid') %}
+          <span class="badge badge-warning" style="margin-left: 6px;" title="Категория не указана">Без категории</span>
           {% endif %}
         </td>
         <td style="text-align: right;" class="{% if d.kind in ('i_paid', 'repay_to_him') %}text-accent{% else %}text-danger{% endif %}">
@@ -89,13 +175,18 @@
             {{ money(d.amount, d.currency) }}
           </span>
         </td>
-        <td class="muted">{{ d.comment or '—' }}</td>
+        <td class="muted">
+          {{ d.comment or '—' }}
+          {% if d.linked_expense_comment %}
+          <div class="font-xs" style="color: var(--accent);">Связано: {{ d.linked_expense_comment }} ({{ money(d.linked_expense_amount) }})</div>
+          {% endif %}
+        </td>
         <td style="text-align: center;">
           <div class="item-actions" style="justify-content: center;">
             <button type="button" class="btn-icon-subtle" data-open="modal-edit-debt-{{ d.id }}" title="Редактировать запись">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
             </button>
-            <form method="post" action="{{ url_for('debts.delete_entry_route', debt_id=d.id) }}" onsubmit="return confirm('Удалить эту запись? Если был связанный расход, он также удалится.');">
+            <form method="post" action="{{ url_for('debts.delete_entry_route', debt_id=d.id) }}" onsubmit="return confirm('Удалить эту запись? Если был связанный расход или зачёт, он также обновится.');">
               <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
               </button>
@@ -132,6 +223,20 @@
       <label>Сумма <input type="number" name="amount" step="0.01" value="{{ "%.2f"|format(d.amount|float) }}" required></label>
       {{ currency_select('currency', d.currency) }}
       <label>Дата <input type="date" name="date" value="{{ d.date }}" required></label>
+
+      <label>Относится к категории (зачёт)
+        <select name="category_id">
+          <option value="">Без категории</option>
+          {% for c in categories %}
+          <option value="{{ c.id }}" {% if d.category_id == c.id or d.effective_category_id == c.id %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>За дату (период зачёта)
+        <input type="date" name="offset_date" value="{{ d.offset_date or d.date }}">
+      </label>
+
       <label>Комментарий <input type="text" name="comment" value="{{ d.comment or '' }}" placeholder="Детали"></label>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" data-close>Отмена</button>
@@ -195,7 +300,7 @@
   </div>
 </div>
 
-<!-- Модальное окно: Ручная запись долга -->
+<!-- Модальное окно: Новая запись долга (с зачётом в категорию) -->
 <div class="modal" id="modal-manual-debt" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
@@ -205,19 +310,40 @@
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
       </button>
     </div>
-    <form method="post" action="{{ url_for('debts.add_entry') }}">
+    <form method="post" action="{{ url_for('debts.add_entry') }}" id="debt-form-single">
       <label>Тип записи
-        <select name="kind">
-          <option value="i_paid">Я заплатил за него</option>
-          <option value="he_paid">Он заплатил за меня</option>
+        <select name="kind" id="debt-kind-select">
+          <option value="i_paid">Я заплатил за него (мне должны)</option>
+          <option value="he_paid">Он заплатил за меня (я должен)</option>
           <option value="repay_from_him">Он вернул мне деньги</option>
           <option value="repay_to_him">Я вернул ему деньги</option>
         </select>
       </label>
       <label>Человек <input type="text" name="person" value="{{ active_person }}" required></label>
-      <label>Сумма <input type="number" name="amount" step="0.01" required placeholder="0.00"></label>
+      <label>Сумма <input type="number" name="amount" id="debt-amount-input" step="0.01" required placeholder="0.00"></label>
       {{ currency_select() }}
-      <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
+      <label>Дата долга <input type="date" name="date" id="debt-date-input" value="{{ today.isoformat() }}" required></label>
+
+      <label>Относится к категории (зачёт)
+        <select name="category_id" id="debt-category-select">
+          <option value="">Без категории</option>
+          {% for c in categories %}
+          <option value="{{ c.id }}">{{ c.name }}</option>
+          {% endfor %}
+        </select>
+      </label>
+
+      <label>За какую дату (период зачёта)
+        <input type="date" name="offset_date" id="debt-offset-date-input" value="{{ today.isoformat() }}">
+      </label>
+
+      <!-- J4: Подсказки кандидатов расходов -->
+      <div id="debt-candidates-container" style="display: none; margin: 10px 0; padding: 10px; background: rgba(255,255,255,0.04); border-radius: 8px; border: 1px dashed rgba(255,255,255,0.15);">
+        <span class="font-xs muted" style="display:block; margin-bottom: 6px;">Найден подходящий расход с карты:</span>
+        <div id="debt-candidates-list"></div>
+      </div>
+      <input type="hidden" name="expense_id" id="debt-expense-id-input">
+
       <label>Комментарий <input type="text" name="comment" placeholder="Детали"></label>
       <div class="modal-actions">
         <button type="button" class="btn btn-secondary" data-close>Отмена</button>
@@ -226,4 +352,253 @@
     </form>
   </div>
 </div>
+
+<!-- J1: Модальное окно: Пакетный ввод из заметки -->
+<div class="modal" id="modal-batch-debt" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-dialog modal-dialog-lg" style="max-width: 760px;">
+    <div class="modal-header">
+      <h3 class="modal-title">Пакетный ввод долгов из заметки</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <form method="post" action="{{ url_for('debts.batch_add') }}" id="batch-debts-form">
+      <p class="muted font-sm" style="margin-bottom: 12px;">
+        Таблица долгов: человек, сумма, категория, дата. Нажмите Enter или кнопку «+ Добавить строку».
+      </p>
+
+      <div style="max-height: 340px; overflow-y: auto; margin-bottom: 14px;">
+        <table class="data-table" id="batch-table" style="font-size: 0.85rem;">
+          <thead>
+            <tr>
+              <th style="width: 130px;">Человек</th>
+              <th style="width: 100px;">Сумма</th>
+              <th>Категория</th>
+              <th style="width: 130px;">Дата</th>
+              <th style="width: 40px;"></th>
+            </tr>
+          </thead>
+          <tbody id="batch-tbody">
+            <tr>
+              <td><input type="text" class="batch-person" value="{{ active_person }}" required style="width:100%;"></td>
+              <td><input type="number" step="0.01" class="batch-amount" placeholder="0.00" required style="width:100%;"></td>
+              <td>
+                <select class="batch-category" style="width:100%;">
+                  <option value="">Без категории</option>
+                  {% for c in categories %}
+                  <option value="{{ c.id }}">{{ c.name }}</option>
+                  {% endfor %}
+                </select>
+              </td>
+              <td><input type="date" class="batch-date" value="{{ today.isoformat() }}" required style="width:100%;"></td>
+              <td><button type="button" class="btn-icon-subtle btn-remove-row" title="Удалить">✕</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-add-batch-row">+ Добавить строку</button>
+        <button type="button" class="btn-link font-sm" id="btn-toggle-paste" style="color: var(--accent);">Вставить текстом из заметки</button>
+      </div>
+
+      <div id="batch-paste-box" style="display: none; margin-bottom: 16px;">
+        <label class="font-xs muted">Вставьте строки из заметки (формат: Кент 657 Квартира 2026-11-01 или Кент 50 Зал):</label>
+        <textarea id="batch-paste-area" rows="4" style="width:100%; font-family: monospace; font-size: 0.85rem;" placeholder="Кент 657 Квартира 2026-11-01&#10;Кент 25 Зал"></textarea>
+        <button type="button" class="btn btn-secondary btn-sm" id="btn-parse-paste" style="margin-top: 6px;">Разобрать в таблицу</button>
+      </div>
+
+      <input type="hidden" name="batch_data" id="batch_data_json">
+
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-primary" id="btn-save-batch">Сохранить все записи</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  // Candidate lookup on debt modal
+  const catSelect = document.getElementById("debt-category-select");
+  const amtInput = document.getElementById("debt-amount-input");
+  const dateInput = document.getElementById("debt-date-input");
+  const offsetDateInput = document.getElementById("debt-offset-date-input");
+  const expIdInput = document.getElementById("debt-expense-id-input");
+  const candBox = document.getElementById("debt-candidates-container");
+  const candList = document.getElementById("debt-candidates-list");
+
+  function checkCandidates() {
+    const cid = catSelect ? catSelect.value : "";
+    const amt = amtInput ? parseFloat(amtInput.value) || 0 : 0;
+    const dt = dateInput ? dateInput.value : "";
+    if (!cid || amt <= 0) {
+      if (candBox) candBox.style.display = "none";
+      return;
+    }
+    fetch(`/debts/candidates?category_id=${cid}&amount=${amt}&date=${dt}`)
+      .then(res => res.json())
+      .then(data => {
+        if (!candBox || !candList) return;
+        candList.innerHTML = "";
+        if (data.candidates && data.candidates.length > 0) {
+          data.candidates.slice(0, 3).forEach(c => {
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "btn btn-secondary btn-sm";
+            btn.style.margin = "4px 4px 4px 0";
+            btn.innerText = `Связать: ${c.amount} BYN от ${c.date} (${c.comment || 'расход'})`;
+            btn.onclick = function() {
+              if (expIdInput) expIdInput.value = c.id;
+              if (offsetDateInput) offsetDateInput.value = c.date;
+              btn.style.background = "var(--accent)";
+              btn.innerText = `✓ Связано с расходом #${c.id}`;
+            };
+            candList.appendChild(btn);
+          });
+          candBox.style.display = "block";
+        } else {
+          candBox.style.display = "none";
+        }
+      })
+      .catch(() => {});
+  }
+
+  if (catSelect) catSelect.addEventListener("change", checkCandidates);
+  if (amtInput) amtInput.addEventListener("input", checkCandidates);
+  if (dateInput) dateInput.addEventListener("change", checkCandidates);
+
+  // Batch debts table logic
+  const tbody = document.getElementById("batch-tbody");
+  const btnAdd = document.getElementById("btn-add-batch-row");
+  const formBatch = document.getElementById("batch-debts-form");
+  const jsonInput = document.getElementById("batch_data_json");
+
+  function addRow(person, amount, catId, dateVal) {
+    if (!tbody) return;
+    const tr = document.createElement("tr");
+    const activeP = person || "{{ active_person }}";
+    const dt = dateVal || "{{ today.isoformat() }}";
+    const catsOptions = `
+      <option value="">Без категории</option>
+      {% for c in categories %}
+      <option value="{{ c.id }}">{{ c.name }}</option>
+      {% endfor %}
+    `;
+    tr.innerHTML = `
+      <td><input type="text" class="batch-person" value="${activeP}" required style="width:100%;"></td>
+      <td><input type="number" step="0.01" class="batch-amount" value="${amount || ''}" placeholder="0.00" required style="width:100%;"></td>
+      <td><select class="batch-category" style="width:100%;">${catsOptions}</select></td>
+      <td><input type="date" class="batch-date" value="${dt}" required style="width:100%;"></td>
+      <td><button type="button" class="btn-icon-subtle btn-remove-row" title="Удалить">✕</button></td>
+    `;
+    if (catId) {
+      const sel = tr.querySelector(".batch-category");
+      if (sel) sel.value = catId;
+    }
+    tbody.appendChild(tr);
+
+    // Enter on last input adds new row
+    const inputs = tr.querySelectorAll("input");
+    inputs[inputs.length - 1].addEventListener("keydown", function(e) {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        addRow();
+      }
+    });
+  }
+
+  if (btnAdd) {
+    btnAdd.addEventListener("click", () => addRow());
+  }
+
+  if (tbody) {
+    tbody.addEventListener("click", function(e) {
+      if (e.target && e.target.classList.contains("btn-remove-row")) {
+        const tr = e.target.closest("tr");
+        if (tbody.querySelectorAll("tr").length > 1) {
+          tr.remove();
+        }
+      }
+    });
+  }
+
+  // Paste from note parsing
+  const btnTogglePaste = document.getElementById("btn-toggle-paste");
+  const pasteBox = document.getElementById("batch-paste-box");
+  const btnParse = document.getElementById("btn-parse-paste");
+  const pasteArea = document.getElementById("batch-paste-area");
+
+  if (btnTogglePaste && pasteBox) {
+    btnTogglePaste.addEventListener("click", function() {
+      pasteBox.style.display = pasteBox.style.display === "none" ? "block" : "none";
+    });
+  }
+
+  if (btnParse && pasteArea) {
+    btnParse.addEventListener("click", function() {
+      const text = pasteArea.value.trim();
+      if (!text) return;
+      const lines = text.split("\n");
+      const catsMap = {};
+      {% for c in categories %}
+      catsMap["{{ c.name | lower }}"] = {{ c.id }};
+      {% endfor %}
+
+      lines.forEach(line => {
+        const parts = line.trim().split(/\s+/);
+        if (parts.length >= 2) {
+          let person = parts[0];
+          let amount = parseFloat(parts[1].replace(",", "."));
+          if (!isNaN(amount) && amount > 0) {
+            let catId = "";
+            let dateStr = "";
+            for (let i = 2; i < parts.length; i++) {
+              const pLower = parts[i].toLowerCase();
+              if (catsMap[pLower]) {
+                catId = catsMap[pLower];
+              } else if (/^\d{4}-\d{2}-\d{2}$/.test(parts[i])) {
+                dateStr = parts[i];
+              }
+            }
+            addRow(person, amount, catId, dateStr);
+          }
+        }
+      });
+      pasteArea.value = "";
+      pasteBox.style.display = "none";
+    });
+  }
+
+  if (formBatch && jsonInput) {
+    formBatch.addEventListener("submit", function(e) {
+      const rows = [];
+      tbody.querySelectorAll("tr").forEach(tr => {
+        const p = tr.querySelector(".batch-person")?.value.trim();
+        const a = parseFloat(tr.querySelector(".batch-amount")?.value) || 0;
+        const c = tr.querySelector(".batch-category")?.value;
+        const d = tr.querySelector(".batch-date")?.value;
+        if (p && a > 0) {
+          rows.push({
+            person: p,
+            amount: a,
+            category_id: c || null,
+            date: d || "{{ today.isoformat() }}",
+            currency: "BYN",
+            kind: "i_paid"
+          });
+        }
+      });
+      if (rows.length === 0) {
+        e.preventDefault();
+        alert("Заполните хотя бы одну строку с суммой > 0");
+        return;
+      }
+      jsonInput.value = JSON.stringify(rows);
+    });
+  }
+});
+</script>
 {% endblock %}

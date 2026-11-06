@@ -108,12 +108,18 @@ SCHEMA_STATEMENTS = (
         date TEXT NOT NULL,
         comment TEXT,
         budget_entry_id INTEGER,
+        category_id INTEGER,
+        offset_date TEXT,
+        expense_id INTEGER,
+        source TEXT NOT NULL DEFAULT 'manual',
         rate_usd REAL,
         rate_eur REAL,
         amount_byn REAL,
         fx_source TEXT DEFAULT 'entry',
         created_at TEXT NOT NULL,
-        FOREIGN KEY (budget_entry_id) REFERENCES budget_entries(id) ON DELETE CASCADE
+        FOREIGN KEY (budget_entry_id) REFERENCES budget_entries(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES budget_categories(id) ON DELETE SET NULL,
+        FOREIGN KEY (expense_id) REFERENCES budget_entries(id) ON DELETE SET NULL
     )
     """,
     """
@@ -121,6 +127,12 @@ SCHEMA_STATEMENTS = (
     """,
     """
     CREATE INDEX IF NOT EXISTS idx_debts_budget_entry ON debts(budget_entry_id)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_debts_category_offset ON debts(category_id, offset_date)
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_debts_expense_id ON debts(expense_id)
     """,
     """
     CREATE TABLE IF NOT EXISTS balance_checks (

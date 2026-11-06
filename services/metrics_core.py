@@ -23,6 +23,8 @@ class PeriodMetrics:
     net_save: float
     delta_b: float
     cash_flow: float
+    exp_gross: float = 0.0
+    total_offset: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -31,6 +33,8 @@ class PeriodMetrics:
             "adj_net": self.adj_net,
             "inc": self.inc,
             "exp_own": self.exp_own,
+            "exp_gross": self.exp_gross,
+            "total_offset": self.total_offset,
             "exp_goal": self.exp_goal,
             "exp_all": self.exp_all,
             "dep": self.dep,
@@ -116,7 +120,7 @@ def get_period_metrics(start: date, end: date) -> PeriodMetrics:
         ).fetchall()
 
         adj_exp = 0.0
-        exp_own = 0.0
+        exp_gross = 0.0
         exp_goal = 0.0
         for r in exp_rows:
             val = float(r["amount_byn"]) if r["amount_byn"] is not None else to_byn(r["amount"], r["currency"])
@@ -125,7 +129,27 @@ def get_period_metrics(start: date, end: date) -> PeriodMetrics:
             elif r["from_goal_id"] is not None:
                 exp_goal += val
             else:
-                exp_own += val
+                exp_gross += val
+
+        # J2: Зачёт долгов (Offset)
+        offset_rows = conn.execute(
+            """
+            SELECT amount, currency, amount_byn
+            FROM debts
+            WHERE kind = 'i_paid'
+              AND source = 'manual'
+              AND category_id IS NOT NULL
+              AND COALESCE(offset_date, date) >= ?
+              AND COALESCE(offset_date, date) <= ?
+            """,
+            (start_str, end_str),
+        ).fetchall()
+
+        total_offset = sum(
+            float(r["amount_byn"]) if r["amount_byn"] is not None else to_byn(r["amount"], r["currency"])
+            for r in offset_rows
+        )
+        exp_own = exp_gross - total_offset
 
         # 3. Копилки
         sav_rows = conn.execute(
@@ -154,6 +178,8 @@ def get_period_metrics(start: date, end: date) -> PeriodMetrics:
     adj_exp = round(adj_exp, 2)
     adj_net = round(adj_inc - adj_exp, 2)
     inc = round(inc, 2)
+    exp_gross = round(exp_gross, 2)
+    total_offset = round(total_offset, 2)
     exp_own = round(exp_own, 2)
     exp_goal = round(exp_goal, 2)
     exp_all = round(exp_own + exp_goal, 2)
@@ -180,4 +206,6 @@ def get_period_metrics(start: date, end: date) -> PeriodMetrics:
         net_save=net_save,
         delta_b=db,
         cash_flow=cash_flow,
+        exp_gross=exp_gross,
+        total_offset=total_offset,
     )

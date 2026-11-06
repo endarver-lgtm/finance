@@ -14,6 +14,16 @@
   </div>
 </header>
 
+<!-- J7: Переключатель «Моя доля / Всего списано» -->
+<div class="period-switcher" style="margin-bottom: 20px;">
+  <a href="{{ url_for('analytics.index', mode='own') }}" class="period-btn {% if is_net %}active{% endif %}">
+    Моя доля (нетто)
+  </a>
+  <a href="{{ url_for('analytics.index', mode='gross') }}" class="period-btn {% if not is_net %}active{% endif %}">
+    Всего списано (брутто)
+  </a>
+</div>
+
 <!-- Секция 1: Метрики финансового здоровья -->
 <section class="kpi-grid">
   <!-- Норма сбережений (C1) -->
@@ -102,7 +112,7 @@
     </div>
   </article>
 
-  <!-- Точность учёта (C10) -->
+  <!-- Точность учёта (C10, J5) -->
   <article class="card kpi-card">
     <div class="kpi-head">
       <span class="kpi-label">Точность учёта</span>
@@ -115,9 +125,10 @@
     </div>
     <div class="kpi-sub">
       {% if health.unexplained_byn is not none %}
-      <span>Неучтёнка за 30 дн: {{ money(health.unexplained_byn, 'BYN', false, false) }}</span>
-      {% else %}
-      <span>Качество сверок карманов</span>
+      <span>Неучтёнка: {{ money(health.unexplained_byn, 'BYN', false, false) }}</span>
+      {% endif %}
+      {% if health.debts_categorized_pct is not none %}
+      <span class="kpi-sub-extra">Разнесено долгов: {{ health.debts_categorized_pct }}%</span>
       {% endif %}
     </div>
   </article>

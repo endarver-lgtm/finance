@@ -25,6 +25,11 @@ ADDITIONAL_COLUMNS = (
     ("debts", "rate_eur", "REAL"),
     ("debts", "amount_byn", "REAL"),
     ("debts", "fx_source", "TEXT DEFAULT 'entry'"),
+    # J1: Debt offsets and expense links
+    ("debts", "category_id", "INTEGER"),
+    ("debts", "offset_date", "TEXT"),
+    ("debts", "expense_id", "INTEGER"),
+    ("debts", "source", "TEXT NOT NULL DEFAULT 'manual'"),
     # A2: Balance checks fx effect
     ("balance_checks", "rate_usd", "REAL"),
     ("balance_checks", "rate_eur", "REAL"),
@@ -207,6 +212,10 @@ def migrate_db(conn):
             conn.execute(
                 "UPDATE savings_entries SET kind = 'deposit' WHERE kind IS NULL OR kind = ''"
             )
+
+    if _table_exists(conn, "debts"):
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_debts_category_offset ON debts(category_id, offset_date)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_debts_expense_id ON debts(expense_id)")
 
     ensure_system_categories(conn)
     _backfill_fx_and_flags(conn)

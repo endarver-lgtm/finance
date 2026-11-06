@@ -59,6 +59,8 @@
         </div>
         {% if c.track_only %}
         <span class="badge badge-muted">Без лимита</span>
+        {% elif c.offset_without_expense %}
+        <span class="badge badge-warning" title="Зачёт долга превышает списания за период">Зачёт без расхода</span>
         {% else %}
         <span class="badge {% if c.pct >= 100 %}badge-danger{% elif c.pct >= 80 %}badge-warning{% else %}badge-ok{% endif %}">
           {{ c.pct }}% лимита
@@ -72,9 +74,14 @@
       <div class="budget-stats">
         <div>
           <span class="stat-label">Потрачено</span>
-          <span class="stat-value {% if c.pct >= 100 %}text-danger{% endif %}">
+          <span class="stat-value {% if c.pct >= 100 %}text-danger{% elif c.spent < 0 %}text-accent{% endif %}">
             {{ money(c.spent, c.spent_currency) }}
           </span>
+          {% if c.offset and c.offset > 0 %}
+          <div class="font-xs muted" style="margin-top: 2px;">
+            {{ money(c.gross_spent) }} − {{ money(c.offset) }} зачёт
+          </div>
+          {% endif %}
         </div>
         <div>
           <span class="stat-label">Осталось</span>

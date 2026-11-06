@@ -6,6 +6,7 @@ from db import get_db, rows_to_dicts
 from services.constants import BUDGET_PERIODS
 from services.currency import to_byn
 from services.dates import add_months, parse_date, period_bounds, period_caption, to_iso
+from services.debts import get_debt_offsets
 from services.forms import (
     parse_currency,
     parse_entry_fields,
@@ -61,12 +62,13 @@ def index():
     }
 
     cards = []
+    offsets = get_debt_offsets(start, end)
     with get_db() as conn:
         for c in list_budget_categories():
             cur = c.get("currency", "BYN")
             planned = category_planned_for_period(c, period)
             planned_byn = to_byn(planned, cur)
-            spent = sum_in_range_byn(
+            gross = sum_in_range_byn(
                 "budget_entries",
                 "date",
                 start,
@@ -74,8 +76,10 @@ def index():
                 "category_id = ? AND from_goal_id IS NULL",
                 (c["id"],),
             )
+            off = offsets.get(c["id"], 0.0)
+            spent = round(gross - off, 2)
             is_track = bool(c.get("track_only"))
-            pct = 0.0 if is_track else usage_percent(spent, planned_byn)
+            pct = 0.0 if is_track else usage_percent(spent, planned_byn, clamp=False)
 
             entries = rows_to_dicts(
                 conn.execute(
@@ -94,8 +98,11 @@ def index():
                 "planned_period": planned,
                 "planned_currency": cur,
                 "spent": spent,
+                "gross_spent": gross,
+                "offset": off,
+                "offset_without_expense": (spent < 0.0 and off > 0.0),
                 "spent_currency": "BYN",
-                "remaining": max(0, planned_byn - spent) if not is_track else 0.0,
+                "remaining": round(planned_byn - spent, 2) if not is_track else 0.0,
                 "pct": pct,
                 "color": progress_color(pct) if not is_track else "",
                 "track_only": is_track,

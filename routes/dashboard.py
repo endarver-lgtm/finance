@@ -18,7 +18,7 @@ from services.analytics import (
 )
 from services.constants import DASHBOARD_PERIODS
 from services.dates import last_n_months, parse_date, period_bounds
-from services.debts import debt_balance
+from services.debts import debt_balance, get_friends_money_card, get_uncategorized_debts
 from services.forms import parse_period_arg
 from services.planning import budget_planned_for_period, income_planned_for_period
 from services.reconcile import calculate_expected, get_last_check
@@ -74,6 +74,13 @@ def index():
     hm = health_metrics(start, end, ref)
     insights = generate_smart_insights(ref)
 
+    # J5 & J7: Неразнесённое и Деньги у друзей
+    uncat_debts = get_uncategorized_debts()
+    envelopes_data = envelope_progress("week", ref)
+    neg_envelopes = [e for e in envelopes_data if e.get("offset_without_expense")]
+    uncat_total = len(uncat_debts) + len(neg_envelopes)
+    friends_card = get_friends_money_card()
+
     return render_template(
         "dashboard.html",
         period=period,
@@ -94,6 +101,8 @@ def index():
             "balance": d_bal,
             "text": d_text,
         },
+        friends_card=friends_card,
+        uncategorized_count=uncat_total,
         check_card={
             "is_stale": is_stale,
             "days_ago": days_ago,
@@ -103,6 +112,6 @@ def index():
         insights=insights[:2],
         expense_chart=expenses_by_category(chart_start, chart_end),
         income_chart={"labels": labels, "plan": plan_series, "fact": fact_series},
-        envelopes=envelope_progress("week", ref),
+        envelopes=envelopes_data,
         upcoming=upcoming_income(ref),
     )

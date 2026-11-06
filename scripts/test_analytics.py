@@ -16,6 +16,7 @@ from services.analytics import (
     calculate_daily_burn_and_forecast,
     cash_flow_waterfall,
     category_comparison_and_pareto,
+    expenses_by_category,
     goals_analytics,
     health_metrics,
     six_months_trends,
@@ -28,7 +29,13 @@ from services.constants import (
 )
 from services.currency import usd_rate
 from services.dates import period_bounds
-from services.debts import add_debt_entry, add_split
+from services.debts import (
+    add_debt_entry,
+    add_split,
+    delete_debt,
+    get_debt_offsets,
+    get_uncategorized_debts,
+)
 from services.metrics_core import (
     PeriodMetrics,
     get_period_metrics,
@@ -336,7 +343,212 @@ def run_tests():
     tr = six_months_trends(date(2026, 3, 15))
     check("H-17 Trends average income excludes current month (got 1500, not 4000)", abs(tr["summary"]["avg_income"] - 1500.0) < 0.01, f"got {tr['summary']['avg_income']}")
 
-    print("\n=== Все аналитические тесты H-1 ... H-17 успешно пройдены! ===")
+    # =============================================================
+    # Этап J. Общие траты: зачёт долга в категорию (H-18 ... H-25)
+    # =============================================================
+    print("\n--- Проверка Этапа J: зачёт общих трат (H-18 ... H-25) ---")
+
+    # -------------------------------------------------------------
+    # H-18: Квартира 1314, долг Кента 657 с категорией «Квартира» -> категория 657, Free -1314, сверка без расхождения
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_apt = create_budget_category("Квартира", 1500.0, "month", "BYN", is_fixed=1)
+    save_check(
+        real_breakdown={"byn": 2000.0, "usd": 0.0, "eur": 0.0},
+        check_date="2026-04-01",
+        comment="Начальный остаток",
+    )
+    # Списание с карты на всю сумму
+    create_budget_entry(c_apt, 1314.0, "2026-04-02", "Аренда квартиры", "BYN")
+    # Доля Кента в долги с категорией
+    add_debt_entry(
+        person="Кент",
+        kind="i_paid",
+        amount=657.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        comment="Половина за квартиру",
+        category_id=c_apt,
+    )
+    cats_18 = expenses_by_category(date(2026, 4, 1), date(2026, 4, 30))
+    apt_spent_18 = next(c["spent"] for c in cats_18 if c["id"] == c_apt)
+    check("H-18.1 Категория нетто равна 657.0 (1314 - 657)", abs(apt_spent_18 - 657.0) < 0.005, f"got {apt_spent_18}")
+
+    m_18 = get_period_metrics(date(2026, 4, 1), date(2026, 4, 30))
+    check("H-18.2 Free равен -1314.0 (-657 расход - 657 долг)", abs(m_18.cash_flow - (-1314.0)) < 0.005, f"got {m_18.cash_flow}")
+
+    # Сверка: на карте списалось ровно 1314, остаток 686.0
+    rec_18 = calculate_expected(real_byn=686.0, check_date="2026-04-05")
+    check("H-18.3 Сверка без расхождения (diff_clean == 0)", abs(rec_18["diff_clean"]) < 0.005, f"got diff={rec_18['diff_clean']}, exp={rec_18['expected_byn']}")
+
+    # -------------------------------------------------------------
+    # H-19: Зал 50, долг 25 «Зал» -> расход 25; Кент возвращает 25 -> Free +25, доход 0, расход остаётся 25
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_gym = create_budget_category("Зал", 100.0, "month", "BYN", is_fixed=0)
+    save_check(
+        real_breakdown={"byn": 1000.0, "usd": 0.0, "eur": 0.0},
+        check_date="2026-04-01",
+    )
+    create_budget_entry(c_gym, 50.0, "2026-04-02", "Тренировка на двоих", "BYN")
+    add_debt_entry(
+        person="Кент",
+        kind="i_paid",
+        amount=25.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        category_id=c_gym,
+    )
+    cats_19 = expenses_by_category(date(2026, 4, 1), date(2026, 4, 30))
+    gym_spent_19 = next(c["spent"] for c in cats_19 if c["id"] == c_gym)
+    check("H-19.1 Расход в категории Зал равен 25.0", abs(gym_spent_19 - 25.0) < 0.005, f"got {gym_spent_19}")
+
+    # Кент возвращает долг
+    add_debt_entry(
+        person="Кент",
+        kind="repay_from_him",
+        amount=25.0,
+        currency="BYN",
+        entry_date="2026-04-05",
+        comment="Возврат долга за зал",
+    )
+    m_19_return = get_period_metrics(date(2026, 4, 4), date(2026, 4, 6))
+    check("H-19.2 Free в периоде возврата равен +25.0", abs(m_19_return.cash_flow - 25.0) < 0.005, f"got {m_19_return.cash_flow}")
+    check("H-19.3 Доход в периоде возврата равен 0.0", abs(m_19_return.inc - 0.0) < 0.005, f"got {m_19_return.inc}")
+
+    m_19_month = get_period_metrics(date(2026, 4, 1), date(2026, 4, 30))
+    check("H-19.4 За месяц расход остаётся 25.0", abs(m_19_month.exp_own - 25.0) < 0.005, f"got {m_19_month.exp_own}")
+    check("H-19.5 Доход за месяц остаётся 0.0", abs(m_19_month.inc - 0.0) < 0.005, f"got {m_19_month.inc}")
+
+    # -------------------------------------------------------------
+    # H-20: Долг записан через неделю с offset_date = дата расхода -> зачёт в периоде расхода
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_cafe = create_budget_category("Кафе", 200.0, "month", "BYN", is_fixed=0)
+    create_budget_entry(c_cafe, 100.0, "2026-04-01", "Ужин", "BYN")
+    # Долг записан 2026-04-08, но offset_date = 2026-04-01
+    add_debt_entry(
+        person="Кент",
+        kind="i_paid",
+        amount=50.0,
+        currency="BYN",
+        entry_date="2026-04-08",
+        offset_date="2026-04-01",
+        category_id=c_cafe,
+    )
+    m_20_wk1 = get_period_metrics(date(2026, 4, 1), date(2026, 4, 3))
+    check("H-20.1 Зачёт попадает в период расхода (exp_own == 50.0)", abs(m_20_wk1.exp_own - 50.0) < 0.005, f"got {m_20_wk1.exp_own}")
+
+    m_20_wk2 = get_period_metrics(date(2026, 4, 7), date(2026, 4, 9))
+    check("H-20.2 В периоде записи долга расход равен 0.0", abs(m_20_wk2.exp_own - 0.0) < 0.005, f"got {m_20_wk2.exp_own}")
+
+    # -------------------------------------------------------------
+    # H-21: Долг he_paid 30 «Зал» -> расход +30 в Зале, Free не меняется, ΔB -30
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_gym2 = create_budget_category("Зал", 100.0, "month", "BYN", is_fixed=0)
+    add_debt_entry(
+        person="Кент",
+        kind="he_paid",
+        amount=30.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        category_id=c_gym2,
+    )
+    m_21 = get_period_metrics(date(2026, 4, 1), date(2026, 4, 30))
+    check("H-21.1 Расход +30 в категории Зал", abs(m_21.exp_own - 30.0) < 0.005, f"got {m_21.exp_own}")
+    check("H-21.2 Delta_B == -30.0", abs(m_21.delta_b - (-30.0)) < 0.005, f"got {m_21.delta_b}")
+    check("H-21.3 Free не меняется (0.0)", abs(m_21.cash_flow - 0.0) < 0.005, f"got {m_21.cash_flow}")
+
+    # -------------------------------------------------------------
+    # H-22: Долг без категории -> расходы не меняются, запись в «Неразнесённом»
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_misc = create_budget_category("Разное", 100.0, "month", "BYN", is_fixed=0)
+    create_budget_entry(c_misc, 80.0, "2026-04-02", "Покупка", "BYN")
+    debt_uncat = add_debt_entry(
+        person="Кент",
+        kind="i_paid",
+        amount=40.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        category_id=None,
+    )
+    m_22 = get_period_metrics(date(2026, 4, 1), date(2026, 4, 30))
+    check("H-22.1 Расходы не меняются (80.0)", abs(m_22.exp_own - 80.0) < 0.005, f"got {m_22.exp_own}")
+
+    uncat_list = get_uncategorized_debts()
+    check("H-22.2 Запись находится в «Неразнесённом»", any(d["id"] == debt_uncat for d in uncat_list))
+
+    # -------------------------------------------------------------
+    # H-23: Удаление долга возвращает категорию к 1314
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_apt2 = create_budget_category("Квартира", 1500.0, "month", "BYN", is_fixed=1)
+    create_budget_entry(c_apt2, 1314.0, "2026-04-02", "Квартира", "BYN")
+    d_id = add_debt_entry(
+        person="Кент",
+        kind="i_paid",
+        amount=657.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        category_id=c_apt2,
+    )
+    cats_23_before = expenses_by_category(date(2026, 4, 1), date(2026, 4, 30))
+    check("H-23.1 До удаления категория равна 657", abs(next(c["spent"] for c in cats_23_before if c["id"] == c_apt2) - 657.0) < 0.005)
+
+    delete_debt(d_id)
+    cats_23_after = expenses_by_category(date(2026, 4, 1), date(2026, 4, 30))
+    apt_after = next(c["spent"] for c in cats_23_after if c["id"] == c_apt2)
+    check("H-23.2 Удаление долга возвращает категорию к 1314.0", abs(apt_after - 1314.0) < 0.005, f"got {apt_after}")
+
+    # -------------------------------------------------------------
+    # H-24: Зачёт без расхода -> категория отрицательная с пометкой, значение не обрезано
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_rent = create_budget_category("Аренда", 1000.0, "month", "BYN", is_fixed=0)
+    # Расход с карты ещё не импортирован, но долг уже внесён
+    add_debt_entry(
+        person="Кент",
+        kind="i_paid",
+        amount=500.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        category_id=c_rent,
+    )
+    cats_24 = expenses_by_category(date(2026, 4, 1), date(2026, 4, 30))
+    rent_c = next(c for c in cats_24 if c["id"] == c_rent)
+    check("H-24.1 Категория отрицательная (-500.0), значение не обрезано", abs(rent_c["spent"] - (-500.0)) < 0.005, f"got {rent_c['spent']}")
+    check("H-24.2 Пометка offset_without_expense установлена в True", rent_c["offset_without_expense"] is True)
+
+    # -------------------------------------------------------------
+    # H-25: Долг из сплита (source='split') не создаёт зачёта повторно
+    # -------------------------------------------------------------
+    reset_db()
+    init_db()
+    c_split = create_budget_category("Ресторан", 300.0, "month", "BYN", is_fixed=0)
+    add_split(
+        total_amount=100.0,
+        currency="BYN",
+        entry_date="2026-04-02",
+        paid_by="me",
+        person="Кент",
+        my_share=50.0,
+        category_id=c_split,
+        comment="Сплит ужина",
+    )
+    cats_25 = expenses_by_category(date(2026, 4, 1), date(2026, 4, 30))
+    split_c = next(c for c in cats_25 if c["id"] == c_split)
+    check("H-25 Сплит не вычитается повторно (spent == 50.0)", abs(split_c["spent"] - 50.0) < 0.005, f"got {split_c['spent']}")
+
+    print("\n=== Все аналитические тесты H-1 ... H-25 успешно пройдены! ===")
     return True
 
 

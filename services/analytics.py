@@ -26,7 +26,7 @@ from services.dates import (
     period_bounds,
     to_iso,
 )
-from services.debts import delta_b
+from services.debts import delta_b, get_debt_offsets, total_debt_offset
 from services.metrics_core import (
     PeriodMetrics,
     get_first_entry_date,
@@ -107,17 +107,19 @@ def reserve_savings_total() -> float:
     return round(total, 2)
 
 
-def expenses_by_category(start: date, end: date, include_fixed: bool = True):
-    """Структура расходов по категориям за период (по Exp_all)."""
+def expenses_by_category(start: date, end: date, include_fixed: bool = True, net: bool = True):
+    """Структура расходов по категориям за период (по Exp_all, с поддержкой нетто доли пользователя J2)."""
     with get_db() as conn:
         sql = "SELECT id, name, is_fixed FROM budget_categories WHERE track_only = 0"
         if not include_fixed:
             sql += " AND is_fixed = 0"
         cats = rows_to_dicts(conn.execute(sql).fetchall())
 
+    offsets = get_debt_offsets(start, end) if net else {}
+
     result = []
     for c in cats:
-        spent = sum_in_range_byn(
+        gross = sum_in_range_byn(
             "budget_entries",
             "date",
             start,
@@ -125,7 +127,17 @@ def expenses_by_category(start: date, end: date, include_fixed: bool = True):
             "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
             (c["id"],),
         )
-        result.append({"id": c["id"], "name": c["name"], "spent": spent, "is_fixed": c.get("is_fixed", 0)})
+        off = offsets.get(c["id"], 0.0)
+        spent = round(gross - off, 2) if net else gross
+        result.append({
+            "id": c["id"],
+            "name": c["name"],
+            "spent": spent,
+            "gross_spent": gross,
+            "offset": off,
+            "offset_without_expense": (spent < 0.0 and off > 0.0),
+            "is_fixed": c.get("is_fixed", 0),
+        })
     result.sort(key=lambda x: (-x["spent"], x["name"]))
     return result
 
@@ -140,9 +152,9 @@ def income_by_months(months):
     return labels, plan, fact
 
 
-def envelope_progress(period: str = "week", ref: Optional[date] = None):
+def envelope_progress(period: str = "week", ref: Optional[date] = None, net: bool = True):
     """
-    Прогресс конвертов с честной полоской (E1) и расчетом темпа (E2).
+    Прогресс конвертов с честной полоской (E1), расчетом темпа (E2) и зачётом долгов (J2, J4).
     """
     ref = ref or date.today()
     start, end = period_bounds(period, ref)
@@ -154,6 +166,8 @@ def envelope_progress(period: str = "week", ref: Optional[date] = None):
             ).fetchall()
         )
 
+    offsets = get_debt_offsets(start, end) if net else {}
+
     for c in cats:
         cur = c.get("currency", "BYN")
         cat_period = c.get("period", "month")
@@ -161,7 +175,7 @@ def envelope_progress(period: str = "week", ref: Optional[date] = None):
         planned_native = scale_plan(float(c.get("planned_amount") or 0), cat_period, start, end)
         planned_byn = to_byn(planned_native, cur)
 
-        spent = sum_in_range_byn(
+        gross = sum_in_range_byn(
             "budget_entries",
             "date",
             start,
@@ -169,8 +183,10 @@ def envelope_progress(period: str = "week", ref: Optional[date] = None):
             "category_id = ? AND from_goal_id IS NULL AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
             (c["id"],),
         )
+        off = offsets.get(c["id"], 0.0)
+        spent = round(gross - off, 2) if net else gross
 
-        # E1: Честный процент и остаток без искусственного обнуления
+        # E1: Честный процент и остаток без искусственного обнуления (J4: не обрезать до нуля)
         pct = usage_percent(spent, planned_byn, clamp=False)
         remaining = round(planned_byn - spent, 2)
         pct_status = progress_color(pct)
@@ -193,6 +209,9 @@ def envelope_progress(period: str = "week", ref: Optional[date] = None):
             "planned_currency": cur,
             "planned_byn": planned_byn,
             "spent": spent,
+            "gross_spent": gross,
+            "offset": off,
+            "offset_without_expense": (spent < 0.0 and off > 0.0),
             "remaining": remaining,
             "pct": pct,
             "status": overall_status,
@@ -605,9 +624,10 @@ def calculate_daily_burn_and_forecast(ref: Optional[date] = None) -> dict:
 
 def calculate_accounting_accuracy(ref: Optional[date] = None) -> dict:
     """
-    Точность учёта (C10):
+    Точность учёта (C10, J5):
     Unexplained = Adj_inc + Adj_exp за последние 30 дней.
     Точность = 100% − Unexplained / (Exp_all + Adj_exp).
+    Разнесено (J5) = доля долгов за 30 дней с категорией.
     """
     ref = ref or date.today()
     start_30 = ref - timedelta(days=29)
@@ -616,12 +636,33 @@ def calculate_accounting_accuracy(ref: Optional[date] = None) -> dict:
     unexplained = round(abs(m.adj_inc) + abs(m.adj_exp), 2)
     denominator = round(m.exp_all + abs(m.adj_exp), 2)
 
+    # J5: Доля долгов за 30 дней с категорией
+    with get_db() as conn:
+        debt_row = conn.execute(
+            """
+            SELECT
+                COUNT(*) AS total,
+                SUM(CASE WHEN (category_id IS NOT NULL OR budget_entry_id IS NOT NULL) THEN 1 ELSE 0 END) AS categorized
+            FROM debts
+            WHERE kind IN ('i_paid', 'he_paid')
+              AND date >= ? AND date <= ?
+            """,
+            (to_iso(start_30), to_iso(ref)),
+        ).fetchone()
+
+    total_debts = debt_row["total"] if debt_row else 0
+    cat_debts = debt_row["categorized"] if debt_row and debt_row["categorized"] is not None else 0
+    debts_categorized_pct = round((cat_debts / total_debts) * 100, 1) if total_debts > 0 else 100.0
+
     if denominator <= 0.005:
         return {
             "accuracy_pct": None,
             "status": "none",
             "label": "Мало данных",
             "unexplained_byn": unexplained,
+            "debts_categorized_pct": debts_categorized_pct,
+            "debts_total_30": total_debts,
+            "debts_uncategorized_30": total_debts - cat_debts,
         }
 
     unexplained_ratio = (unexplained / denominator) * 100
@@ -643,6 +684,9 @@ def calculate_accounting_accuracy(ref: Optional[date] = None) -> dict:
         "label": label,
         "unexplained_byn": unexplained,
         "unexplained_pct": round(unexplained_ratio, 1),
+        "debts_categorized_pct": debts_categorized_pct,
+        "debts_total_30": total_debts,
+        "debts_uncategorized_30": total_debts - cat_debts,
     }
 
 
@@ -798,9 +842,10 @@ def cash_flow_waterfall(start: date, end: date) -> dict:
     }
 
 
-def category_comparison_and_pareto(ref: Optional[date] = None, include_fixed: bool = False) -> dict:
+def category_comparison_and_pareto(ref: Optional[date] = None, include_fixed: bool = False, net: bool = True) -> dict:
     """
     Анализ структуры трат (Парето, C5) и честные сдвиги день-в-день (C6).
+    J7: Переключатель «Моя доля / Всего списано» (net=True/False).
     """
     ref = ref or date.today()
     cur_start, cur_end = period_bounds("month", ref)
@@ -824,24 +869,31 @@ def category_comparison_and_pareto(ref: Optional[date] = None, include_fixed: bo
             ).fetchall()
         )
 
+    cur_offsets = get_debt_offsets(cur_start, cur_end) if net else {}
+    prev_offsets = get_debt_offsets(prev_start, prev_end_d) if net else {}
+
     categories_data = []
     total_cur = 0.0
     total_prev = 0.0
 
     for c in cats:
         # Для Парето берется Exp_all (включая from_goal_id) без корректировок сверки
-        spent_cur = sum_in_range_byn(
+        gross_cur = sum_in_range_byn(
             "budget_entries", "date", cur_start, cur_end,
             "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
             (c["id"],),
         )
+        off_cur = cur_offsets.get(c["id"], 0.0)
+        spent_cur = round(gross_cur - off_cur, 2) if net else gross_cur
 
         # Сравнение с прошлым месяцем строго день-в-день
-        spent_prev = sum_in_range_byn(
+        gross_prev = sum_in_range_byn(
             "budget_entries", "date", prev_start, prev_end_d,
             "category_id = ? AND id NOT IN (SELECT adjust_expense_id FROM balance_checks WHERE adjust_expense_id IS NOT NULL)",
             (c["id"],),
         )
+        off_prev = prev_offsets.get(c["id"], 0.0)
+        spent_prev = round(gross_prev - off_prev, 2) if net else gross_prev
 
         total_cur += spent_cur
         total_prev += spent_prev
@@ -860,6 +912,8 @@ def category_comparison_and_pareto(ref: Optional[date] = None, include_fixed: bo
             "is_fixed": c.get("is_fixed", 0),
             "spent_current": round(spent_cur, 2),
             "spent_previous": round(spent_prev, 2),
+            "gross_current": round(gross_cur, 2),
+            "offset_current": round(off_cur, 2),
             "diff": diff,
             "pct_change": pct_change,
         })

@@ -100,19 +100,38 @@ def calculate_expected(real_byn: float, check_date: str) -> dict:
 
         db = delta_b_strictly_after(last_date, to_date)
 
+        # J3: Debts offset in (last_date, to_date]
+        offset_rows = conn.execute(
+            """
+            SELECT amount, currency, amount_byn
+            FROM debts
+            WHERE kind = 'i_paid'
+              AND source = 'manual'
+              AND category_id IS NOT NULL
+              AND COALESCE(offset_date, date) > ?
+              AND COALESCE(offset_date, date) <= ?
+            """,
+            (last_date, to_date),
+        ).fetchall()
+        offset_sum = sum(
+            float(r["amount_byn"]) if r["amount_byn"] is not None else to_byn(r["amount"], r["currency"])
+            for r in offset_rows
+        )
+
         if savings_in_check == 1:
-            # Все расходы, включая from_goal_id
+            # Все расходы, включая from_goal_id, за вычетом зачёта долгов (Exp_net)
             exp_rows = conn.execute(
                 "SELECT amount, currency, amount_byn FROM budget_entries WHERE date > ? AND date <= ?",
                 (last_date, to_date),
             ).fetchall()
-            expenses_sum = sum(
+            expenses_gross = sum(
                 float(r["amount_byn"]) if r["amount_byn"] is not None else to_byn(r["amount"], r["currency"])
                 for r in exp_rows
             )
-            flows = income_sum - expenses_sum - db
+            expenses_net = expenses_gross - offset_sum
+            flows = income_sum - expenses_net - db
         else:
-            # Только собственные расходы (from_goal_id IS NULL)
+            # Только собственные расходы (from_goal_id IS NULL) за вычетом зачёта долгов
             exp_rows = conn.execute(
                 """
                 SELECT amount, currency, amount_byn FROM budget_entries
@@ -120,10 +139,11 @@ def calculate_expected(real_byn: float, check_date: str) -> dict:
                 """,
                 (last_date, to_date),
             ).fetchall()
-            own_expenses = sum(
+            own_expenses_gross = sum(
                 float(r["amount_byn"]) if r["amount_byn"] is not None else to_byn(r["amount"], r["currency"])
                 for r in exp_rows
             )
+            own_expenses_net = own_expenses_gross - offset_sum
 
             dep_rows = conn.execute(
                 """
@@ -149,7 +169,7 @@ def calculate_expected(real_byn: float, check_date: str) -> dict:
                 for r in free_rows
             )
 
-            flows = income_sum - own_expenses - deposits + withdraw_free - db
+            flows = income_sum - own_expenses_net - deposits + withdraw_free - db
 
     expected_byn = round(float(last["real_byn"]) + flows, 2)
     diff_byn = round(real_byn - expected_byn, 2)
