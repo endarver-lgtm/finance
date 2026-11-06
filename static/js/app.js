@@ -464,18 +464,7 @@
         }
       };
 
-      if (document.startViewTransition) {
-        await document.startViewTransition(() => {
-          applyNewContent();
-        }).finished;
-      } else {
-        currentMain.classList.add('page-exit');
-        await new Promise((r) => setTimeout(r, 140));
-        applyNewContent();
-        currentMain.classList.remove('page-exit');
-        currentMain.classList.add('page-enter');
-        setTimeout(() => currentMain.classList.remove('page-enter'), 280);
-      }
+      applyNewContent();
     } catch (err) {
       console.warn('Navigation fallback:', err);
       window.location.href = url;
