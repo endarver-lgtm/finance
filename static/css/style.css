@@ -379,6 +379,7 @@ button, input, select, textarea {
   align-items: center;
   margin-bottom: 8px;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .kpi-label {
@@ -393,6 +394,7 @@ button, input, select, textarea {
   border-radius: 999px;
   font-weight: 500;
   line-height: 1.2;
+  white-space: nowrap;
 }
 
 .kpi-badge--accent {
@@ -1012,6 +1014,7 @@ button, input, select, textarea {
   border-radius: var(--radius-tag);
   border: 1px solid transparent;
   line-height: 1.4;
+  white-space: nowrap;
 }
 
 .badge-ok {
@@ -1068,6 +1071,7 @@ button, input, select, textarea {
   border: 1px solid transparent;
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
   -webkit-tap-highlight-color: transparent;
   transition: background-color var(--duration-quick) var(--ease), border-color var(--duration-quick) var(--ease), color var(--duration-quick) var(--ease), transform var(--duration-quick) var(--ease), box-shadow var(--duration-quick) var(--ease);
 }
@@ -3001,6 +3005,35 @@ body.modal-open {
   margin-bottom: 24px;
 }
 
+.waterfall-header-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  border-radius: var(--radius-pill);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.waterfall-header-chip--accent {
+  background-color: rgba(27, 94, 63, 0.08);
+  border: 1px solid rgba(27, 94, 63, 0.25);
+  color: var(--accent);
+}
+
+.waterfall-header-chip--danger {
+  background-color: rgba(224, 122, 95, 0.1);
+  border: 1px solid rgba(224, 122, 95, 0.3);
+  color: #c93b3b;
+}
+
+.waterfall-header-chip strong {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 600;
+}
+
 .waterfall-scroll-container {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -3318,9 +3351,21 @@ body.modal-open {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
   font-size: 12px;
   padding-top: 8px;
   border-top: 1px solid var(--hairline);
+  flex-wrap: wrap;
+}
+
+.goal-forecast-meta strong {
+  white-space: nowrap;
+}
+
+.goal-forecast-meta-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* AI Assistant & Insights */
@@ -3508,15 +3553,46 @@ body.modal-open {
 
   /* Analytics Mobile Responsiveness */
   .section-head--stackable,
+  .section-head--waterfall,
+  .section-head--goals,
   .ai-section-head {
     flex-direction: column;
     align-items: flex-start;
     gap: 12px;
   }
 
+  .section-head--stackable > div:first-child,
+  .section-head--waterfall > div:first-child,
+  .section-head--goals > div:first-child,
+  .ai-section-head > div:first-child {
+    width: 100%;
+  }
+
   .ai-section-head button,
+  .section-head--goals .btn,
+  .section-head--waterfall .waterfall-header-chip,
   .section-head--stackable .chart-legend-pills {
     align-self: flex-start;
+    white-space: nowrap;
+  }
+
+  /* KPI Card mobile headers: prevent badge word-wrapping */
+  .kpi-head {
+    align-items: flex-start;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .kpi-head .kpi-label {
+    font-size: 12px;
+    line-height: 1.3;
+  }
+
+  .kpi-head .badge,
+  .kpi-head .kpi-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    white-space: nowrap;
   }
 
   .chart-box--large {

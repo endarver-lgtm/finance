@@ -341,11 +341,11 @@ def health_metrics(start: date, end: date, ref: date | None = None) -> dict:
         savings_rate = 0.0
 
     if savings_rate >= 20.0:
-        sr_status, sr_label = "ok", "Отлично (>=20%)"
+        sr_status, sr_label = "ok", "Отлично"
     elif savings_rate >= 10.0:
-        sr_status, sr_label = "warning", "Нормально (10–20%)"
+        sr_status, sr_label = "warning", "Норма"
     else:
-        sr_status, sr_label = "danger", "Низкая (<10%)"
+        sr_status, sr_label = "danger", "Низкая"
 
     # 2. Runway (Подушка безопасности в месяцах)
     total_savings = savings_total()
@@ -367,13 +367,13 @@ def health_metrics(start: date, end: date, ref: date | None = None) -> dict:
         runway_months = 0.0
 
     if runway_months >= 6.0:
-        rw_status, rw_label = "stellar", "Капитал (>=6 мес.)"
+        rw_status, rw_label = "stellar", "Капитал"
     elif runway_months >= 3.0:
-        rw_status, rw_label = "ok", "Надёжно (3–6 мес.)"
+        rw_status, rw_label = "ok", "Надёжно"
     elif runway_months >= 1.0:
-        rw_status, rw_label = "warning", "Минимум (1–3 мес.)"
+        rw_status, rw_label = "warning", "Минимум"
     else:
-        rw_status, rw_label = "danger", "Критично (<1 мес.)"
+        rw_status, rw_label = "danger", "Критично"
 
     # 3. Budget Adherence (Дисциплина конвертов)
     envelopes = envelope_progress("month", ref)

@@ -53,7 +53,7 @@
     <div class="kpi-head">
       <span class="kpi-label">Дисциплина бюджета</span>
       <span class="badge {% if health.adherence_status == 'ok' %}badge-ok{% else %}badge-warning{% endif %}">
-        {{ health.in_limit_count }} из {{ health.total_envelopes }} в норме
+        {{ health.in_limit_count }} из {{ health.total_envelopes }}
       </span>
     </div>
     <div class="kpi-value">{{ health.adherence_pct }}%</div>
@@ -66,25 +66,25 @@
   <article class="card kpi-card">
     <div class="kpi-head">
       <span class="kpi-label">Дневной расход</span>
-      <span class="kpi-badge">в среднем</span>
     </div>
     <div class="kpi-value">{{ money(health.daily_burn, 'BYN', false, false) }}</div>
     <div class="kpi-sub">
-      <span>Скорость расходования средств за текущий период</span>
+      <span>В среднем за день в текущем периоде</span>
     </div>
   </article>
 </section>
 
 <!-- Секция: Водопад денежного потока (Cash Flow Waterfall) -->
 <section class="card waterfall-card">
-  <div class="section-head">
+  <div class="section-head section-head--waterfall">
     <div>
       <h2>Движение средств за месяц (Cash Flow)</h2>
       <p class="section-desc">Распределение приходов по расходам, копилкам и остатку</p>
     </div>
-    <span class="kpi-badge {% if waterfall.free_cash >= 0 %}kpi-badge--accent{% else %}kpi-badge--danger{% endif %}">
-      Остаток: {{ money(waterfall.free_cash) }}
-    </span>
+    <div class="waterfall-header-chip {% if waterfall.free_cash >= 0 %}waterfall-header-chip--accent{% else %}waterfall-header-chip--danger{% endif %}">
+      <span>Остаток:</span>
+      <strong>{{ money(waterfall.free_cash, 'BYN', false, false) }}</strong>
+    </div>
   </div>
   <div class="waterfall-scroll-container">
     <div class="waterfall-flow">
@@ -240,12 +240,12 @@
 
 <!-- Секция: Прогноз достижения целей (ETA) -->
 <section class="card">
-  <div class="section-head">
+  <div class="section-head section-head--goals">
     <div>
       <h2>Прогноз целей накоплений</h2>
       <p class="section-desc">Оценка темпа и ожидаемых сроков закрытия целей</p>
     </div>
-    <a href="{{ url_for('savings.index') }}" class="btn btn-secondary btn-sm">В копилки →</a>
+    <a href="{{ url_for('savings.index') }}" class="btn btn-secondary btn-sm section-head-action">В копилки →</a>
   </div>
 
   {% if goals %}
@@ -277,11 +277,11 @@
       </div>
 
       <div class="goal-forecast-meta">
-        <div>
+        <div class="goal-forecast-meta-item">
           <span class="muted">Темп:</span>
-          <strong>~{{ money(g.monthly_pace, 'BYN', false, false) }}/мес</strong>
+          <strong>~{{ money(g.monthly_pace, 'BYN', false, false) }}&nbsp;/мес</strong>
         </div>
-        <div>
+        <div class="goal-forecast-meta-item">
           <span class="muted">Ориентир (ETA):</span>
           <strong class="{% if g.deadline_status == 'behind' %}text-danger{% else %}text-accent{% endif %}">
             {{ g.eta_date or '—' }}
