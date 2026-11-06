@@ -2,6 +2,7 @@ import os
 from datetime import date, timedelta
 
 from flask import Flask, redirect, request, send_from_directory, session, url_for
+from werkzeug.middleware.proxy_fix import ProxyFix
 
 from config import DEFAULT_CURRENCY, SECRET_KEY
 from db import get_setting, init_db
@@ -14,10 +15,28 @@ def create_app():
     app = Flask(__name__)
     app.secret_key = SECRET_KEY
     app.permanent_session_lifetime = timedelta(days=90)
+    
+    # Determine if HTTPS should be enforced for cookies
+    secure_cookies = (
+        os.environ.get("SESSION_COOKIE_SECURE", "0").lower() in ("1", "true")
+        or os.environ.get("APP_ENV") == "production"
+    )
     app.config.update(
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_COOKIE_SECURE=secure_cookies,
     )
+    
+    # Wrap WSGI app with ProxyFix to trust reverse proxy (Nginx) headers:
+    # X-Forwarded-For (client IP), X-Forwarded-Proto (https/http), X-Forwarded-Host, X-Forwarded-Prefix
+    app.wsgi_app = ProxyFix(
+        app.wsgi_app,
+        x_for=1,
+        x_proto=1,
+        x_host=1,
+        x_prefix=1,
+    )
+
     init_db()
     try:
         refresh_rates_if_stale()

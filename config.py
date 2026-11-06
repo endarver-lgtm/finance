@@ -24,7 +24,10 @@ DATABASE_PATH = os.environ.get(
     "DATABASE_PATH", os.path.join(BASE_DIR, "finance.db")
 )
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me-in-production")
-APP_PIN = os.environ.get("APP_PIN", "9002")
+APP_PASSWORD = os.environ.get("APP_PASSWORD") or os.environ.get("APP_PIN") or "9002"
+# Backward-compatibility alias
+APP_PIN = APP_PASSWORD
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "BYN")
 DEFAULT_USD_RATE = os.environ.get("USD_RATE", "3.27")
 DEFAULT_EUR_RATE = os.environ.get("EUR_RATE", "3.55")

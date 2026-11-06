@@ -307,14 +307,14 @@ erDiagram
 - `value` (`TEXT NOT NULL`): Сериализованное строковое значение.
 
 *Реестр системных ключей:*
-- `pin_code`: 4-значный цифровой PIN доступа к системе (по умолчанию `'9002'`).
+- `pin_code`: Локальный хеш/значение PIN (устаревший fallback; основной секрет `APP_PASSWORD` загружается из изолированного `.env`).
 - `usd_rate`: Текущий курс доллара США к белорусскому рублю (по умолчанию `'3.27'`).
 - `eur_rate`: Текущий курс евро к белорусскому рублю (по умолчанию `'3.55'`).
 - `rates_updated_at`: Временная метка последней синхронизации курсов (ISO-8601).
 - `rates_nbrb_date`: Дата курсов по календарю Нацбанка РБ (`YYYY-MM-DD`).
 - `savings_in_check`: Флаг учета копилок при сверке (`'1'` — копилки входят в посчитанные деньги; `'0'` — лежат изолированно).
 - `default_debt_person`: Контрагент по умолчанию для быстрых совместных трат (по умолчанию `'Кент'`).
-- `ai_api_key`: API-ключ сервиса Groq Cloud (начинается с `gsk_`).
+- `ai_api_key`: API-ключ сервиса Groq Cloud (рекомендуется передавать через переменную окружения `GROQ_API_KEY` в файле `.env`, чтобы ключ не попадал в открытые дампы базы данных).
 - `ai_model`: Имя языковой модели (по умолчанию `'qwen/qwen3.8-27b'`).
 - `ai_provider`: Провайдер LLM (по умолчанию `'groq'`).
 
@@ -715,13 +715,11 @@ After=network.target
 
 [Service]
 Type=simple
-User=root
+User=finance
+Group=finance
 WorkingDirectory=/opt/finance
+EnvironmentFile=/opt/finance/.env
 Environment="PATH=/opt/finance/venv/bin:/usr/local/bin:/usr/bin"
-Environment="SECRET_KEY=production-crypto-random-secret-key"
-Environment="PIN_CODE=9002"
-Environment="GROQ_API_KEY=gsk_your_groq_api_key_here"
-Environment="DATABASE_PATH=/opt/finance/finance.db"
 ExecStart=/opt/finance/venv/bin/gunicorn \
     --workers 3 \
     --bind 127.0.0.1:5000 \
@@ -738,9 +736,22 @@ WantedBy=multi-user.target
 
 ### 8.3. Конфигурация Nginx Reverse Proxy (`/etc/nginx/sites-available/finance`)
 ```nginx
+# Редирект HTTP на HTTPS
 server {
     listen 80;
-    server_name 146.19.142.116 your-domain.com;
+    server_name your-domain.com <your_server_ip>;
+    return 301 https://$host$request_uri;
+}
+
+# Защищенный HTTPS сервер
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com <your_server_ip>;
+
+    ssl_certificate /etc/ssl/certs/finance.crt;
+    ssl_certificate_key /etc/ssl/private/finance.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
 
     client_max_body_size 20M;
 
@@ -791,10 +802,10 @@ tar -czf update.tar.gz \
     app.py config.py routes/ services/ static/ templates/
 
 # 2. Передача архива на сервер
-scp update.tar.gz root@146.19.142.116:/tmp/update.tar.gz
+scp update.tar.gz root@<your_server_ip>:/tmp/update.tar.gz
 
 # 3. Применение на сервере и бесшовный рестарт
-ssh root@146.19.142.116 "tar -xzf /tmp/update.tar.gz -C /opt/finance && rm /tmp/update.tar.gz && systemctl restart finance && systemctl is-active finance"
+ssh root@<your_server_ip> "tar -xzf /tmp/update.tar.gz -C /opt/finance && chown -R finance:finance /opt/finance && rm /tmp/update.tar.gz && systemctl restart finance && systemctl is-active finance"
 ```
 
 ---

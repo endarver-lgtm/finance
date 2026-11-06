@@ -7,17 +7,15 @@ from flask import (
     url_for,
 )
 
-from services.auth import verify_pin
+from services.auth import verify_credential
 
 bp = Blueprint("auth", __name__)
 
 
 def _get_client_ip() -> str:
-    # Prefer reverse proxy header if present
-    x_forwarded_for = request.headers.get("X-Forwarded-For")
-    if x_forwarded_for:
-        return x_forwarded_for.split(",")[0].strip()
-    return request.headers.get("X-Real-IP") or request.remote_addr or "127.0.0.1"
+    # With ProxyFix middleware enabled, request.remote_addr is guaranteed to be
+    # the client IP from the trusted reverse proxy (X-Forwarded-For).
+    return request.remote_addr or "127.0.0.1"
 
 
 @bp.route("/login", methods=["GET", "POST"])
@@ -27,10 +25,15 @@ def login():
 
     error = None
     if request.method == "POST":
-        pin = (request.form.get("pin") or "").strip()
+        # Accept both 'password' and legacy 'pin' form fields
+        secret = (
+            request.form.get("password")
+            or request.form.get("pin")
+            or ""
+        ).strip()
         client_ip = _get_client_ip()
 
-        success, err_msg = verify_pin(pin, client_ip)
+        success, err_msg = verify_credential(secret, client_ip)
         if success:
             session.permanent = True
             session["is_authenticated"] = True

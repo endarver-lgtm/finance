@@ -843,9 +843,9 @@ def generate_ai_review(ref: date | None = None) -> dict:
     insights = generate_smart_insights(ref)
 
     api_key = (
-        get_setting("ai_api_key", "").strip()
-        or os.environ.get("GROQ_API_KEY", "").strip()
+        os.environ.get("GROQ_API_KEY", "").strip()
         or os.environ.get("AI_API_KEY", "").strip()
+        or get_setting("ai_api_key", "").strip()
     )
     ai_model = get_setting("ai_model", "").strip() or "qwen/qwen3.8-27b"
     ai_provider = get_setting("ai_provider", "").strip() or "groq"

@@ -53,12 +53,12 @@
     <div class="kpi-head">
       <span class="kpi-label">Дисциплина бюджета</span>
       <span class="badge {% if health.adherence_status == 'ok' %}badge-ok{% else %}badge-warning{% endif %}">
-        {{ health.in_limit_count }} из {{ health.total_envelopes }}
+        {{ health.in_limit_count }}/{{ health.total_envelopes }}
       </span>
     </div>
     <div class="kpi-value">{{ health.adherence_pct }}%</div>
     <div class="kpi-sub">
-      <span>Конвертов удерживаются в рамках лимита</span>
+      <span>Конвертов в рамках лимита</span>
     </div>
   </article>
 
@@ -66,10 +66,11 @@
   <article class="card kpi-card">
     <div class="kpi-head">
       <span class="kpi-label">Дневной расход</span>
+      <span class="badge badge-neutral">в день</span>
     </div>
     <div class="kpi-value">{{ money(health.daily_burn, 'BYN', false, false) }}</div>
     <div class="kpi-sub">
-      <span>В среднем за день в текущем периоде</span>
+      <span>Скорость расходования средств</span>
     </div>
   </article>
 </section>

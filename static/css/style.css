@@ -3525,45 +3525,79 @@ body.modal-open {
   /* Analytics Mobile Responsiveness */
   .section-head--stackable,
   .section-head--waterfall,
-  .section-head--goals,
   .ai-section-head {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .section-head--goals {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
   }
 
   .section-head--stackable > div:first-child,
   .section-head--waterfall > div:first-child,
   .section-head--goals > div:first-child,
   .ai-section-head > div:first-child {
-    width: 100%;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .ai-section-head button,
-  .section-head--goals .btn,
   .section-head--waterfall .waterfall-header-chip,
   .section-head--stackable .chart-legend-pills {
     align-self: flex-start;
-    white-space: nowrap;
+    white-space: nowrap !important;
+  }
+
+  .section-head--waterfall .waterfall-header-chip {
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  /* Universal section link & badge wrap protection */
+  .section-link {
+    font-size: 12.5px;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
+  }
+
+  .section-link span {
+    white-space: nowrap !important;
+  }
+
+  .badge,
+  .kpi-badge {
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
 
   /* KPI Card mobile headers: prevent badge word-wrapping */
   .kpi-head {
+    display: flex;
     align-items: flex-start;
+    justify-content: space-between;
     gap: 6px;
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    margin-bottom: 6px;
   }
 
   .kpi-head .kpi-label {
-    font-size: 12px;
-    line-height: 1.3;
+    font-size: 12.5px;
+    line-height: 1.25;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .kpi-head .badge,
   .kpi-head .kpi-badge {
-    font-size: 10px;
-    padding: 2px 6px;
-    white-space: nowrap;
+    font-size: 11px;
+    padding: 2px 7px;
+    white-space: nowrap !important;
+    flex-shrink: 0 !important;
   }
 
   .chart-box--large {

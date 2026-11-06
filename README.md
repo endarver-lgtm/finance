@@ -161,7 +161,7 @@ flowchart TD
    В файле `.env` укажите:
    ```ini
    SECRET_KEY=your-secure-random-secret-key
-   PIN_CODE=9002
+   APP_PASSWORD=your-strong-password-or-pin
    DATABASE_PATH=finance.db
    GROQ_API_KEY=your_groq_api_key_optional
    ```
@@ -173,7 +173,7 @@ flowchart TD
      ```bash
      python app.py
      ```
-   Приложение откроется в браузере по адресу: `http://127.0.0.1:5000` (PIN по умолчанию: `9002`).
+   Приложение откроется в браузере по адресу: `http://127.0.0.1:5000` (введите заданный в `.env` пароль или PIN).
 
 ---
 
@@ -217,12 +217,11 @@ Description=AkselMoney Financial Engine
 After=network.target
 
 [Service]
-User=root
+User=finance
+Group=finance
 WorkingDirectory=/opt/finance
 Environment="PATH=/opt/finance/venv/bin"
-Environment="SECRET_KEY=your-production-secret-key"
-Environment="PIN_CODE=9002"
-Environment="GROQ_API_KEY=gsk_your_key_here"
+EnvironmentFile=/opt/finance/.env
 ExecStart=/opt/finance/venv/bin/gunicorn -w 3 -b 127.0.0.1:5000 app:app
 Restart=always
 RestartSec=5
@@ -233,17 +232,34 @@ WantedBy=multi-user.target
 
 ### 3. Запуск и автозагрузка службы
 ```bash
+# Создание выделенного системного пользователя finance
+sudo useradd -r -s /usr/sbin/nologin finance
+sudo chown -R finance:finance /opt/finance
+
 sudo systemctl daemon-reload
 sudo systemctl enable finance
 sudo systemctl start finance
 sudo systemctl status finance
 ```
 
-### 4. Конфигурация Nginx Reverse Proxy
+### 4. Конфигурация Nginx Reverse Proxy (HTTPS / SSL)
 ```nginx
+# Редирект HTTP на HTTPS
 server {
     listen 80;
-    server_name your-domain.com 146.19.142.116;
+    server_name your-domain.com <your_server_ip>;
+    return 301 https://$host$request_uri;
+}
+
+# Защищенный HTTPS сервер
+server {
+    listen 443 ssl http2;
+    server_name your-domain.com <your_server_ip>;
+
+    ssl_certificate /etc/ssl/certs/finance.crt;
+    ssl_certificate_key /etc/ssl/private/finance.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers HIGH:!aNULL:!MD5;
 
     client_max_body_size 16M;
 
@@ -270,10 +286,10 @@ server {
 tar -czf update.tar.gz app.py config.py routes/ services/ static/ templates/
 
 # Доставка на сервер
-scp update.tar.gz root@146.19.142.116:/tmp/
+scp update.tar.gz root@<your_server_ip>:/tmp/
 
 # Распаковка и перезапуск на сервере
-ssh root@146.19.142.116 "tar -xzf /tmp/update.tar.gz -C /opt/finance && rm /tmp/update.tar.gz && systemctl restart finance"
+ssh root@<your_server_ip> "tar -xzf /tmp/update.tar.gz -C /opt/finance && chown -R finance:finance /opt/finance && rm /tmp/update.tar.gz && systemctl restart finance"
 ```
 
 ---
