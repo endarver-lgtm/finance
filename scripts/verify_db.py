@@ -106,7 +106,10 @@ def main():
     print("\n=== HTTP Smoke ===")
     from app import app
     client = app.test_client()
+    with client.session_transaction() as sess:
+        sess["is_authenticated"] = True
     all_ok &= check("GET /", client.get("/").status_code == 200)
+    all_ok &= check("GET /analytics", client.get("/analytics/").status_code == 200)
     all_ok &= check("GET /income", client.get("/income/").status_code == 200)
     all_ok &= check("GET /budget", client.get("/budget/").status_code == 200)
     all_ok &= check("GET /savings", client.get("/savings/").status_code == 200)

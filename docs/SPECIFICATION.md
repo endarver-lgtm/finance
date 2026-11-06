@@ -1,141 +1,196 @@
-# Спецификация проекта Finance Tracker
+# Полная техническая спецификация системы AkselMoney
+
+---
 
 ## 1. Введение и назначение системы
 
 ### 1.1. Общие сведения
-**Finance Tracker** — это веб-приложение для персонального и семейного финансового учета и планирования. Система ориентирована на учет денежных потоков в белорусских рублях (**BYN**) с мультивалютным вводом и автоматической оценкой в долларах США (**USD**) и евро (**EUR**) по официальным курсам Национального банка Республики Беларусь (**НБРБ**).
+**AkselMoney** — это автономная персональная финансовая система, ориентированная на жесткий финансовый учет, нулевое бюджетирование (Zero-Based Envelope Budgeting), прозрачный взаимный клиринг долгов, еженедельный аудит остатков карманов и глубокую предиктивную аналитику с искусственным интеллектом.
 
-Приложение спроектировано на стыке четырех ключевых финансовых практик:
-1. **Метод конвертов (Envelope Budgeting)** — жесткое лимитирование операционных расходов по категориям на неделю или месяц.
-2. **Планирование Cash Flow и целей** — разделение доходов на регулярные и разовые, контроль ожидаемых поступлений, свободного денежного остатка (Free Cash Flow) и фонда накоплений (резерв, хотелки, крупные цели).
-3. **Учет взаиморасчетов и долгов (Debts & Split Expenses)** — фиксация совместных трат (например, с соседом по жилью), автоматический нетто-взаимозачет и изоляция чужих трат от собственных лимитов бюджета.
-4. **Сверка с реальным остатком (Balance Reconciliation)** — еженедельный аудит фактических остатков на картах и наличных денег с фиксацией расхождений через системную категорию «Неучтёнка».
+Система спроектирована по принципу **Offline-First / Single-Tenant Data Sovereignty**: все финансовые транзакции, ключи и история хранятся в локальной СУБД SQLite с возможностью бесшовного переключения на облачный PostgreSQL (Supabase/Render) и защищены сквозной PIN-аутентификацией.
 
-### 1.2. Ключевые цели продукта
-- **Прозрачность финансовой картины**: моментальный ответ на вопросы «Сколько заработано?», «Сколько потрачено?», «Сколько осталось до конца недели/месяца?», «Каков свободный остаток?», «Кто кому сколько должен?».
-- **Предотвращение перерасхода**: визуальный контроль исчерпания недельных и месячных лимитов с предупреждающей цветовой индикацией.
-- **Двусторонние копилки**: возможность не только пополнять накопительные цели, но и снимать средства как на целевые расходы (без слома недельных лимитов конвертов), так и обратно в свободные деньги.
-- **Мультивалютность без рутины**: фиксация операций в удобной пользователю валюте (BYN, USD, EUR) с фоновой нормализацией и прозрачным отображением курсовых эквивалентов.
-- **Контроль реальности**: 5-минутная регулярная сверка показывает точность учета, предотвращая расхождение виртуального баланса с кошельком.
-- **Автономность и мобильность**: возможность запуска как локально (настольный режим с базой SQLite и скриптами быстрого старта), так и в облаке (Flask/Gunicorn + PostgreSQL Supabase на Render). Доступ ко всем операциям со смартфона за 10–15 секунд (в пределах 2–3 тапов).
+### 1.2. Базовая валюта и финансовая философия
+- **Базовая валюта учета**: Белорусский рубль (**BYN**). Все агрегаты, балансы, конверты, аналитика и сверки нормализуются к BYN.
+- **Мультивалютный ввод**: Поддержка операций в долларах США (**USD**) и евро (**EUR**) с ежедневным обновлением официальных курсов по API Национального банка Республики Беларусь (**НБРБ**).
+- **Пять китов системы**:
+  1. **Zero-Based Envelope Budgeting (Конверты)**: операционные расходы делятся на недельные и месячные конверты; расходы сверх лимита немедленно подсвечиваются предупреждающей индикацией.
+  2. **Двусторонние накопительные копилки (Two-Way Savings)**: сбережения можно не только копить, но и тратить на целевые покупки (`from_goal_id`) без искусственного слома недельного лимита категории.
+  3. **Сальдированный учет долгов (Split Expenses & Debts)**: оплата общего чека картой владельца автоматически изолирует чужую долю от личного бюджета и накапливает нетто-сальдо взаиморасчетов ($B$).
+  4. **Контроль реальности карманов (Balance Reconciliation)**: регулярная 3-минутная сверка фактических денег на картах и в кошельке с расчетным балансом системы с автосписанием расхождений в системный конверт «Неучтёнка».
+  5. **Аналитический хаб и AI-консультант (Financial Intelligence & AI)**: комплексный аудит капитала за 6 месяцев, 4 KPI здоровья, водопад Cash Flow, ядро трат Парето (80/20), прогноз закрытия целей (ETA) и отчет ИИ на базе модели Qwen 3.8-27b через Groq API.
+
+### 1.3. Терминологический глоссарий
+- **Free Cash Flow ($Free$)**: свободный денежный остаток за период за вычетом всех расходов, депозитов в копилки и чистого изменения долгов.
+- **Runway (Подушка безопасности)**: срок финансовой автономности в месяцах при среднем уровне расходов за последние 90 дней.
+- **Savings Rate (Норма сбережений)**: процент чистого дохода, направляемый в фонд накоплений и капитал.
+- **Budget Adherence (Дисциплина бюджета)**: процент конвертов, фактические расходы по которым не превысили установленный плановый лимит.
+- **Burn Rate**: средняя скорость расходования денежных средств в сутки.
+- **Конверт `track_only`**: системная категория без планового лимита (например, «Неучтёнка»), аккумулирующая технические проводки.
+- **Сальдо долга ($B$)**: баланс взаиморасчетов с конкретным лицом ($B > 0$ — мне должны, $B < 0$ — я должен).
+- **Целевое снятие (`withdraw_spent`)**: проводка покупки за счет средств копилки с созданием расхода в бюджете без списания из свободного остатка кошелька.
 
 ---
 
-## 2. Архитектурная спецификация
+## 2. Архитектура системы
 
 ### 2.1. Технологический стек
 
-| Уровень | Технология | Описание и назначение |
-|---|---|---|
-| **Backend Framework** | Python 3.10+, Flask 3.0 | Легковесный WSGI веб-сервер, модульная архитектура на Blueprints |
-| **База данных** | SQLite 3 (`finance.db`) / PostgreSQL | Локальный движок SQLite с поддержкой внешних ключей (`PRAGMA foreign_keys = ON`); полная совместимость с PostgreSQL (Supabase) |
-| **Интерфейс / Шаблонизация** | Jinja2, HTML5, CSS3 Custom Properties | Серверный рендеринг, кастомная дизайн-система, полная адаптивность под Desktop (Sidebar) и Mobile (Bottom-Nav + "Ещё") |
-| **Интерактивные графики** | Chart.js 4.4.3 | Клиентская визуализация структуры расходов и динамики план-факт |
-| **Внешние интеграции** | REST API НБРБ (`api.nbrb.by`) | Автоматическая ежедневная синхронизация официальных курсов валют |
-| **Запуск и развертывание** | `start.bat`, `start.sh`, Gunicorn, `Procfile` | Локальный запуск в один клик с автооткрытием браузера, облачный деплой на Render |
+| Компонент | Технология | Версия / Спецификация | Назначение |
+|---|---|---|---|
+| **Ядро бэкенда** | Python | 3.10+ | Основная логика, математические расчеты, сервисное API |
+| **Веб-фреймворк** | Flask | 3.0+ | WSGI приложение, Blueprint-модули, сессии, фильтры шаблонов |
+| **СУБД по умолчанию** | SQLite 3 | 3.39+ (`finance.db`) | Транзакционное хранилище, `PRAGMA foreign_keys = ON`, Row-фабрика |
+| **Облачная СУБД** | PostgreSQL | 15+ (Supabase / Render) | Опциональное облачное хранилище, полная адаптация SQL-диалекта |
+| **WSGI HTTP-сервер** | Gunicorn | 21.2+ | Production веб-сервер с пулом рабочих процессов (workers) |
+| **Рендеринг интерфейса** | Jinja2 | 3.1+ | Серверные HTML-шаблоны, макросы форматирования, безопасность XSS |
+| **Стили и верстка** | CSS3 Native | Custom Properties, Grid, Flexbox | Скандинавская минималистичная дизайн-система, адаптивность 360px–4K |
+| **Визуализация данных** | Chart.js | 4.4.3 (UMD Bundle) | Интерактивные графики трендов, расходов и структуры Парето |
+| **Искусственный интеллект** | Groq Cloud API | Qwen 3.8-27b (`groq.com`) | Генерация персонального аудита финансов на естественном языке |
+| **Внешние API** | REST API НБРБ | `api.nbrb.by` | Официальные курсы валют (USD, EUR) Нацбанка Республики Беларусь |
+| **PWA & Мобильность** | Web App Manifest | W3C Manifest, Apple Touch | Автономный запуск на iOS / Android, полноэкранный режим без URL-бара |
 
-### 2.2. Архитектура приложения
+### 2.2. Архитектурная схема взаимодействия
 
 ```mermaid
 graph TD
-    User["Пользователь (Desktop / Mobile Browser)"]
-    
-    subgraph UI ["Клиентский уровень (Frontend)"]
-        HTML["Jinja2 Templates (base, dashboard, budget, income, savings, debts, balance, history, settings)"]
-        CSS["style.css (CSS Variables, Flexbox/Grid, Responsive Sidebar/Bottom-Nav)"]
-        JS["app.js / dashboard.js (Модальные окна, динамические расчёты, Chart.js)"]
-    end
-    
-    subgraph Backend ["Серверный уровень (Flask Application)"]
-        AppInit["app.py (create_app, context_processor, template_filters, Blueprints registration)"]
-        Routes["Модули маршрутов (routes/):<br/>dashboard, income, budget, savings, debts, balance, history, settings"]
-        Services["Сервисный слой (services/):<br/>analytics, debts, reconcile, savings, planning, currency, nbrb, dates, repository, forms, progress"]
-        DBLayer["Слой доступа к данным (db/):<br/>connection, schema, settings, migrate"]
-    end
-    
-    subgraph DataStorage ["Уровень хранения данных"]
-        SQLite[("SQLite: finance.db")]
-        Supabase[("PostgreSQL: Supabase (Cloud)")]
-    end
-    
-    subgraph External ["Внешние сервисы"]
-        NBRB["API НБРБ (https://api.nbrb.by)"]
+    User["Пользователь (Desktop Browser / iOS PWA / Android PWA)"]
+
+    subgraph SecurityLayer ["Уровень аутентификации и сессий"]
+        Gate["Session Auth Gate (routes/auth.py)"]
+        PIN["PIN Verifier: PBKDF2/SHA-256 + Rate Limiter"]
     end
 
-    User -->|HTTP Requests / Forms| HTML
-    HTML --> JS
-    JS -->|Render Charts / DOM| HTML
-    HTML --> Routes
-    Routes --> Services
-    Services --> DBLayer
-    Services -->|HTTP GET (Курсы)| NBRB
-    DBLayer --> SQLite
-    DBLayer -.->|Опционально| Supabase
+    subgraph Presentation ["Уровень представления (Frontend)"]
+        Templates["Jinja2 Шаблоны (base, dashboard, analytics, budget, income...)"]
+        CSS["style.css (CSS Vars, Scandinavian SaaS Theme, Responsive)"]
+        JS["Client Scripts: app.js (SPA Navigation), analytics.js (Chart.js + Legend)"]
+    end
+
+    subgraph Controllers ["Уровень маршрутизации (Flask Blueprints)"]
+        B_Auth["auth_bp (/login, /logout)"]
+        B_Dash["dashboard_bp (/)"]
+        B_Analytics["analytics_bp (/analytics, /refresh-ai)"]
+        B_Income["income_bp (/income)"]
+        B_Budget["budget_bp (/budget)"]
+        B_Savings["savings_bp (/savings)"]
+        B_Debts["debts_bp (/debts)"]
+        B_Balance["balance_bp (/balance)"]
+        B_History["history_bp (/history)"]
+        B_Settings["settings_bp (/settings)"]
+    end
+
+    subgraph Services ["Сервисный слой (Бизнес-логика)"]
+        S_Analytics["services/analytics.py (KPI, Waterfall, Trends, Pareto, AI Audit)"]
+        S_Debts["services/debts.py (Сальдирование, сплит чеков, взаимные долги)"]
+        S_Reconcile["services/reconcile.py (Сверка карманов, расчет ожиданий, Неучтёнка)"]
+        S_Savings["services/savings.py (Пополнения, целевые снятия, овердрафт)"]
+        S_Planning["services/planning.py (Масштабирование планов день/неделя/месяц/год)"]
+        S_Currency["services/currency.py (Нормализация валют в BYN, форматирование)"]
+        S_NBRB["services/nbrb.py (Синхронизация курсов Нацбанка РБ)"]
+        S_Repo["services/repository.py (Атомарные CRUD-операции сущностей)"]
+    end
+
+    subgraph Storage ["Уровень хранения данных"]
+        DBConn["db/connection.py (Connection Pool, Foreign Keys, SQL Wrapper)"]
+        SQLite[("finance.db (SQLite3)")]
+        SettingsTable["settings (Key-Value Config: PIN, AI Keys, Rates)"]
+    end
+
+    subgraph ExternalServices ["Внешние облачные шлюзы"]
+        GroqAPI["Groq Cloud API (Qwen 3.8-27b)"]
+        NBRB_API["API НБРБ (https://api.nbrb.by)"]
+    end
+
+    User --> Gate
+    Gate --> PIN
+    PIN -->|Сессия валидна| Presentation
+    Presentation --> Controllers
+    Controllers --> Services
+    Services --> DBConn
+    DBConn --> SQLite
+    DBConn --> SettingsTable
+    S_Analytics -.->|Аудит капитала| GroqAPI
+    S_NBRB -.->|Курсы валют| NBRB_API
 ```
 
-### 2.3. Структура директорий проекта
+### 2.3. Структура директорий и исходных файлов
+
 ```
-finance/
-├── app.py                      # Точка входа Flask-приложения, регистрация блюпринтов и фильтров
-├── config.py                   # Конфигурация (переменные окружения, пути, секретные ключи)
-├── manage.py                   # CLI-утилита для управления (update-rates, reset)
-├── finance.db                  # Основная локальная база данных SQLite
-├── db/                         # Слой взаимодействия с базой данных
-│   ├── __init__.py             # Экспорт интерфейсов БД
-│   ├── connection.py           # Пул и обертка подключений (Row-фабрика, адаптация %s -> ?)
-│   ├── schema.py               # DDL схемы таблиц, порядок удаления и инициализация
-│   ├── settings.py             # CRUD настроек key-value
-│   └── migrate.py              # Идемпотентные миграции для SQLite и PostgreSQL
-├── routes/                     # Контроллеры / Маршруты страниц
-│   ├── dashboard.py            # Сводный дашборд и KPI
-│   ├── income.py               # Источники дохода и поступления
-│   ├── budget.py               # Конверты и списания расходов (в т.ч. совместные траты)
-│   ├── savings.py              # Цели накоплений, пополнения и снятия
-│   ├── debts.py                # Баланс долгов, взаиморасчеты и возвраты
-│   ├── balance.py              # Еженедельная сверка реального остатка
-│   ├── history.py              # Журнал транзакций и фильтры
-│   └── settings.py             # Настройки валют, сверки и синхронизация НБРБ
-├── services/                   # Бизнес-логика и сервисы
-│   ├── analytics.py            # Агрегаты KPI, расчет Free Cash Flow, выборки для графиков
-│   ├── debts.py                # Бизнес-правила взаиморасчетов, сплитов и долгов
-│   ├── reconcile.py            # Логика сверки остатков и автокоррекции
-│   ├── savings.py              # Логика пополнений и снятий из копилок
+c:\Users\Legion\Documents\finance\
+├── app.py                      # Фабрика приложения create_app(), фильтры Jinja, обработчики ошибок
+├── config.py                   # Конфигурация приложения (BaseConfig, LocalConfig, CloudConfig)
+├── manage.py                   # CLI утилиты командной строки (update-rates, reset)
+├── requirements.txt            # Зависимости Python (Flask, Gunicorn, Requests...)
+├── start.bat                   # 1-кликовый запуск для Windows (автоактивация venv и открытие браузера)
+├── start.sh                    # Быстрый старт для Linux / macOS
+├── .env.example                # Образец переменных окружения
+├── db/                         # Слой базы данных
+│   ├── __init__.py             # Экспорт интерфейсов get_db, init_db, reset_db
+│   ├── connection.py           # Пул коннектов, Row-фабрика, транслятор SQL-плейсхолдеров (%s -> ?)
+│   ├── schema.py               # DDL схемы всех 9 таблиц, начальные данные и настройки
+│   ├── settings.py             # Интерфейс key-value настроек (get_setting, set_setting)
+│   └── migrate.py              # Идемпотентный мигратор базы данных без потери информации
+├── routes/                     # Контроллеры Flask Blueprints
+│   ├── __init__.py             # Экспорт блюпринтов
+│   ├── auth.py                 # Аутентификация по PIN-коду, сессии, brute-force защита
+│   ├── dashboard.py            # Главный дашборд, карточка здоровья, быстрые инсайты
+│   ├── analytics.py            # Аналитический хаб: KPI здоровья, Водопад, Тренды, Парето, AI
+│   ├── income.py               # Источники доходов и поступления
+│   ├── budget.py               # Конверты бюджета, списание расходов, сплит совместных чеков
+│   ├── savings.py              # Накопительные копилки, взносы, целевые снятия
+│   ├── debts.py                # Взаиморасчеты с людьми, журнал долгов, автосальдирование
+│   ├── balance.py              # Ревизия и сверка фактического остатка карманов
+│   ├── history.py              # Аудит транзакций с фильтрацией и поиском
+│   └── settings.py             # Управление курсами валют, смена PIN, настройка AI
+├── services/                   # Слой чистой предметной бизнес-логики
+│   ├── analytics.py            # Математика аналитики: 4 KPI, Waterfall, 6-Month Trends, Pareto, AI
+│   ├── debts.py                # Модель сальдированного долга, нетто-клиринг, сплит чеков
+│   ├── reconcile.py            # Математика сверки карманов, ожидаемый остаток, Неучтёнка
+│   ├── savings.py              # Проводки копилок, валидация овердрафта, связь с бюджетом
 │   ├── planning.py             # Масштабирование планов под периоды (день/неделя/месяц/год)
-│   ├── repository.py           # Операции чтения/записи доменных сущностей
-│   ├── currency.py             # Конвертация валют (BYN/USD/EUR), расчет курсов
-│   ├── nbrb.py                 # Интеграция с REST API Нацбанка РБ
-│   ├── dates.py                # Календарная математика, периоды, форматирование дат
-│   ├── forms.py                # Валидация и парсинг форм ввода
-│   ├── progress.py             # Расчет процентов, статусов и цветов прогресс-баров
-│   └── constants.py            # Константы валют, периодов и меток
-├── templates/                  # Шаблоны Jinja2
-│   ├── base.html               # Базовый лейаут (Sidebar, Mobile Bottom Nav + "Ещё", курсы)
-│   ├── macros.html             # UI-макросы (money, currency_select, period_switcher)
-│   ├── dashboard.html          # Главная страница
-│   ├── income.html             # Страница приходов
-│   ├── budget.html             # Страница бюджета (конверты)
-│   ├── savings.html            # Страница накоплений
-│   ├── debts.html              # Страница долгов и взаимозачетов
-│   ├── balance.html            # Страница сверки остатка
-│   ├── history.html            # Страница истории операций
-│   └── settings.html           # Страница настроек
-├── static/                     # Статические ресурсы
-│   ├── css/style.css           # Основные стили, CSS переменные, сетки
-│   └── js/
-│       ├── app.js              # Инициализация модальных окон, хелперы графиков и форм
-│       └── dashboard.js        # Инициализация Chart.js графиков на дашборде
-├── scripts/                    # Вспомогательные скрипты
-│   ├── verify_db.py            # Комплексные тесты бизнес-правил (A–K) и HTTP Smoke
-│   └── create_desktop_shortcut.ps1 # Генератор ярлыка рабочего стола Windows
-├── start.bat                   # Быстрый старт на Windows
-└── start.sh                    # Быстрый старт на macOS/Linux
+│   ├── repository.py           # Доменные операции создания/удаления записей
+│   ├── currency.py             # Нормализация валют (BYN/USD/EUR), курсы, математика округлений
+│   ├── nbrb.py                 # HTTP-клиент к REST API Нацбанка Беларуси
+│   ├── dates.py                # Календарная математика, границы периодов, локализация дат
+│   ├── forms.py                # Парсинг и строгая валидация входящих форм
+│   ├── progress.py             # Логика цветов и статусов прогресс-баров
+│   └── constants.py            # Доменные константы валют, периодов, лимитов
+├── static/                     # Статические клиентские файлы
+│   ├── css/style.css           # Дизайн-система: адаптивные сетки, компоненты, PWA стили
+│   ├── js/
+│   │   ├── app.js              # Инициализация модалок, SPA-роутинг, Chart.js хелперы, маски
+│   │   └── analytics.js        # Инициализация графиков трендов, диаграммы Парето и AI-кнопки
+│   ├── img/
+│   │   ├── logo.png            # Векторное/растровое лого приложения (512x512)
+│   │   ├── apple-touch-icon.png# Иконка для домашнего экрана iOS (180x180)
+│   │   ├── favicon-32.png      # Фавиконка для десктопа (32x32)
+│   │   └── favicon-16.png      # Фавиконка для вкладок браузера (16x16)
+│   ├── manifest.json           # W3C Web App Manifest для PWA-установки
+│   └── favicon.ico             # Традиционный ICO-файл
+├── templates/                  # Шаблоны страниц Jinja2
+│   ├── base.html               # Каркас: монолитный десктопный сайдбар, мобильный бар, модалки
+│   ├── macros.html             # UI-макросы: money, currency_select, period_switcher, empty_state
+│   ├── login.html              # Экран ввода цифрового PIN-кода с визуальной клавиатурой
+│   ├── dashboard.html          # Главная страница: здоровье, графики, конверты, долги
+│   ├── analytics.html          # Страница аналитики: KPI, Водопад, Тренды, Парето, Копилки, AI
+│   ├── budget.html             # Бюджетные конверты, прогресс-бары, модалка сплита
+│   ├── income.html             # Источники прихода, план-факт за месяц
+│   ├── savings.html            # Карточки копилок, модалка снятия на цель
+│   ├── debts.html              # Взаиморасчеты, баланс долгов, быстрый возврат
+│   ├── balance.html            # Форма мультивалютного пересчета карманов и история сверок
+│   ├── history.html            # Журнал всех проводок с фильтрами
+│   └── settings.html           # Экран настроек: курсы НБРБ, PIN, AI-ключи, копилки в сверке
+├── scripts/                    # Автоматизированное тестирование и утилиты
+│   └── verify_db.py            # Комплексный тест бизнес-правил (A–K) и HTTP Smoke
+└── docs/                       # Документация проекта
+    └── SPECIFICATION.md        # Настоящий документ полной технической спецификации
 ```
 
 ---
 
-## 3. Модель данных (Data Model)
+## 3. Модель данных (Data Model Specification)
 
-### 3.1. Entity-Relationship (ER) диаграмма
+### 3.1. Entity-Relationship диаграмма (Mermaid)
 
 ```mermaid
 erDiagram
@@ -209,7 +264,7 @@ erDiagram
         text currency "BYN | USD | EUR"
         text date "YYYY-MM-DD"
         text comment
-        integer budget_entry_id FK "nullable (link for withdraw_spent)"
+        integer budget_entry_id FK "nullable"
         text created_at "ISO-8601"
     }
 
@@ -230,9 +285,9 @@ erDiagram
         integer id PK
         text date "YYYY-MM-DD"
         real real_byn
-        real expected_byn "nullable for base check"
-        real diff_byn "nullable for base check"
-        text real_breakdown "JSON string"
+        real expected_byn "nullable"
+        real diff_byn "nullable"
+        text real_breakdown "JSON: byn, usd, eur"
         integer savings_in_check "0 | 1"
         integer adjust_expense_id FK "nullable -> budget_entries.id"
         integer adjust_income_id FK "nullable -> income_entries.id"
@@ -244,458 +299,505 @@ erDiagram
     income_entries ||--o| balance_checks : "adjust_income"
 ```
 
-### 3.2. Детальное описание таблиц
+### 3.2. Спецификация таблиц базы данных
 
-#### `settings`
-Хранилище конфигурационных параметров приложения в формате «ключ — значение»:
-- `key` (TEXT, PK): Имя параметра (`currency`, `usd_rate`, `eur_rate`, `rates_updated_at`, `rates_nbrb_date`, `savings_in_check`, `default_debt_person`).
-- `value` (TEXT): Значение параметра:
-  - `savings_in_check`: `'1'` (по умолчанию) — копилки входят в сверяемый реальный остаток; `'0'` — копилки лежат отдельно и не учитываются при сверке.
-  - `default_debt_person`: Имя контрагента по умолчанию (по умолчанию `'Кент'`).
+#### 1. Таблица `settings`
+Хранилище глобальных параметров приложения в формате ключ-значение:
+- `key` (`TEXT PRIMARY KEY`): Идентификатор параметра.
+- `value` (`TEXT NOT NULL`): Сериализованное строковое значение.
 
-#### `income_sources`
-Источники доходов (зарплата, подработка, клиенты, контракты):
-- `id` (INTEGER, PK, Autoincrement).
-- `name` (TEXT): Название источника.
-- `type` (TEXT): `regular` (постоянный) или `one_time` (разовый проект).
-- `planned_amount` (REAL): Планируемая сумма поступления в валюте источника.
-- `currency` (TEXT): Валюта плана (`BYN`, `USD`, `EUR`). По умолчанию `BYN`.
-- `frequency` (TEXT): Периодичность (`weekly` — еженедельно, `monthly` — ежемесячно, `one_time` — разово).
-- `active` (INTEGER): Флаг активности (1 — активен, 0 — в архиве).
-- `created_at` (TEXT): Временная метка ISO-8601.
+*Реестр системных ключей:*
+- `pin_code`: 4-значный цифровой PIN доступа к системе (по умолчанию `'9002'`).
+- `usd_rate`: Текущий курс доллара США к белорусскому рублю (по умолчанию `'3.27'`).
+- `eur_rate`: Текущий курс евро к белорусскому рублю (по умолчанию `'3.55'`).
+- `rates_updated_at`: Временная метка последней синхронизации курсов (ISO-8601).
+- `rates_nbrb_date`: Дата курсов по календарю Нацбанка РБ (`YYYY-MM-DD`).
+- `savings_in_check`: Флаг учета копилок при сверке (`'1'` — копилки входят в посчитанные деньги; `'0'` — лежат изолированно).
+- `default_debt_person`: Контрагент по умолчанию для быстрых совместных трат (по умолчанию `'Кент'`).
+- `ai_api_key`: API-ключ сервиса Groq Cloud (начинается с `gsk_`).
+- `ai_model`: Имя языковой модели (по умолчанию `'qwen/qwen3.8-27b'`).
+- `ai_provider`: Провайдер LLM (по умолчанию `'groq'`).
 
-#### `income_entries`
-Фактические поступления денежных средств:
-- `id` (INTEGER, PK, Autoincrement).
-- `source_id` (INTEGER, FK -> `income_sources.id` ON DELETE SET NULL, Nullable): Связь с источником. Если `NULL` — поступление считается независимым разовым доходом (или неучтённым приходом по результатам сверки).
-- `amount` (REAL): Фактически поступившая сумма.
-- `currency` (TEXT): Валюта поступления (`BYN`, `USD`, `EUR`).
-- `date` (TEXT): Дата получения средств в формате `YYYY-MM-DD`.
-- `comment` (TEXT, Nullable): Пользовательский комментарий.
-- `created_at` (TEXT): Временная метка ISO-8601.
+#### 2. Таблица `income_sources`
+Источники регулярных и разовых доходов:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `name` (`TEXT NOT NULL`): Название («Зарплата», «Клиент А», «Папаня»).
+- `type` (`TEXT NOT NULL`): `regular` (регулярный поток) или `one_time` (разовый контракт).
+- `planned_amount` (`REAL NOT NULL`): Плановая сумма в валюте источника.
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта плана (`BYN`, `USD`, `EUR`).
+- `frequency` (`TEXT NOT NULL DEFAULT 'monthly'`): Периодичность (`weekly`, `monthly`, `one_time`).
+- `active` (`INTEGER NOT NULL DEFAULT 1`): Статус активности (1 — активен, 0 — в архиве).
+- `created_at` (`TEXT NOT NULL`): Время создания ISO-8601.
 
-#### `budget_categories`
-Категории расходов («конверты»):
-- `id` (INTEGER, PK, Autoincrement).
-- `name` (TEXT): Название категории (например, «Продукты», «Транспорт», «Неучтёнка»).
-- `planned_amount` (REAL): Лимит расходов на установленный период. Для системных категорий может быть `0.0`.
-- `currency` (TEXT): Валюта лимита.
-- `period` (TEXT): Период действия лимита (`week` — неделя, `month` — месяц).
-- `is_system` (INTEGER, Default 0): Флаг системной категории (1 — нельзя удалить или переименовать).
-- `track_only` (INTEGER, Default 0): Режим фиксации без лимита (1 — не имеет лимита, исключается из расчета исчерпания процентов).
-- `created_at` (TEXT): Временная метка ISO-8601.
+#### 3. Таблица `income_entries`
+Фактические транзакции поступления средств:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `source_id` (`INTEGER REFERENCES income_sources(id) ON DELETE SET NULL`): Ссылка на источник дохода. Может быть `NULL` для разовых внеплановых поступлений и излишков сверок.
+- `amount` (`REAL NOT NULL`): Сумма поступления (> 0).
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта поступления.
+- `date` (`TEXT NOT NULL`): Дата получения `YYYY-MM-DD`.
+- `comment` (`TEXT`): Пользовательское примечание.
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
-*Примечание*: Системная категория `Неучтёнка` создается автоматически при инициализации/миграции базы данных со свойствами: `name='Неучтёнка'`, `planned_amount=0`, `currency='BYN'`, `period='month'`, `is_system=1`, `track_only=1`.
+#### 4. Таблица `budget_categories`
+Конверты расходов:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `name` (`TEXT NOT NULL`): Название конверта («Продукты», «Аренда жилья», «Неучтёнка»).
+- `planned_amount` (`REAL NOT NULL DEFAULT 0`): Плановый лимит на базовый период.
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта лимита.
+- `period` (`TEXT NOT NULL DEFAULT 'month'`): Базовый цикл конверта (`week` или `month`).
+- `is_system` (`INTEGER NOT NULL DEFAULT 0`): Системный конверт (1 — защищен от удаления и переименования).
+- `track_only` (`INTEGER NOT NULL DEFAULT 0`): Режим учета без лимита (1 — не рассчитывает процент перерасхода, для технических проводок).
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
-#### `budget_entries`
-Фактические списания расходов по конвертам:
-- `id` (INTEGER, PK, Autoincrement).
-- `category_id` (INTEGER, FK -> `budget_categories.id` ON DELETE CASCADE): Категория расхода.
-- `amount` (REAL): Сумма списания.
-- `currency` (TEXT): Валюта списания.
-- `date` (TEXT): Дата покупки/списания (`YYYY-MM-DD`).
-- `comment` (TEXT, Nullable): Комментарий (наименование магазина, детализация).
-- `from_goal_id` (INTEGER, FK -> `savings_goals.id` ON DELETE SET NULL, Nullable): Идентификатор копилки, если покупка оплачена за счет снятия из накоплений.
-- `created_at` (TEXT): Временная метка ISO-8601.
+*Примечание*: Системный конверт `Неучтёнка` инициализируется со свойствами: `is_system=1`, `track_only=1`, `planned_amount=0`, `period='month'`.
 
-#### `savings_goals`
-Цели накоплений («копилки»):
-- `id` (INTEGER, PK, Autoincrement).
-- `name` (TEXT): Название цели (например, «Подушка безопасности», «Новый ноутбук», «Отпуск»).
-- `type` (TEXT): Категория цели (`want` — хотелка, `reserve` — финансовый резерв, `big` — крупная покупка).
-- `target_amount` (REAL): Целевая сумма накопления.
-- `currency` (TEXT): Валюта цели.
-- `deadline` (TEXT, Nullable): Желаемая дата достижения цели (`YYYY-MM-DD`).
-- `created_at` (TEXT): Временная метка ISO-8601.
+#### 5. Таблица `budget_entries`
+Фактические списания расходов:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `category_id` (`INTEGER NOT NULL REFERENCES budget_categories(id) ON DELETE CASCADE`): Конверт расхода.
+- `amount` (`REAL NOT NULL`): Сумма списания (> 0).
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта транзакции.
+- `date` (`TEXT NOT NULL`): Дата расхода `YYYY-MM-DD`.
+- `comment` (`TEXT`): Детализация чека / магазина.
+- `from_goal_id` (`INTEGER REFERENCES savings_goals(id) ON DELETE SET NULL`): Ссылка на копилку, если трата оплачена из накоплений.
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
-#### `savings_entries`
-Транзакции пополнения и снятия по копилкам:
-- `id` (INTEGER, PK, Autoincrement).
-- `goal_id` (INTEGER, FK -> `savings_goals.id` ON DELETE CASCADE): Идентификатор цели.
-- `kind` (TEXT, Default `'deposit'`): Тип транзакции:
-  - `deposit` — внесение средств в копилку;
-  - `withdraw_spent` — снятие средств на конкретную трату (с созданием записи в бюджете);
-  - `withdraw_free` — снятие средств и возврат в свободные наличные деньги.
-- `amount` (REAL): Сумма транзакции (всегда положительное число; знак определяется типом `kind`).
-- `currency` (TEXT): Валюта операции.
-- `date` (TEXT): Дата операции (`YYYY-MM-DD`).
-- `comment` (TEXT, Nullable): Комментарий.
-- `budget_entry_id` (INTEGER, FK -> `budget_entries.id` ON DELETE SET NULL, Nullable): Ссылка на расход в бюджете для транзакций типа `withdraw_spent`.
-- `created_at` (TEXT): Временная метка ISO-8601.
+#### 6. Таблица `savings_goals`
+Цели накопления (копилки):
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `name` (`TEXT NOT NULL`): Имя цели («Подушка безопасности», «Новый Макбук», «Отпуск»).
+- `type` (`TEXT NOT NULL DEFAULT 'want'`): Тип (`reserve` — подушка, `big` — крупная цель, `want` — хотелка).
+- `target_amount` (`REAL NOT NULL`): Целевая сумма накопления в валюте цели.
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта цели (`BYN`, `USD`, `EUR`).
+- `deadline` (`TEXT`): Желаемый дедлайн достижения `YYYY-MM-DD`.
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
-#### `debts`
-Журнал учета долгов и взаимозачетов с людьми:
-- `id` (INTEGER, PK, Autoincrement).
-- `person` (TEXT): Имя контрагента (например, «Кент»).
-- `kind` (TEXT): Тип долговой операции:
-  - `i_paid` — я оплатил за него;
-  - `he_paid` — он оплатил за меня;
-  - `repay_from_him` — он вернул мне долг деньгами;
-  - `repay_to_him` — я вернул ему долг деньгами.
-- `amount` (REAL): Сумма операции (> 0).
-- `currency` (TEXT): Валюта операции (`BYN`, `USD`, `EUR`).
-- `date` (TEXT): Дата операции (`YYYY-MM-DD`).
-- `comment` (TEXT, Nullable): Комментарий к долгу.
-- `budget_entry_id` (INTEGER, FK -> `budget_entries.id` ON DELETE CASCADE, Nullable): Связанный расход в бюджете (для совместных чеков).
-- `created_at` (TEXT): Временная метка ISO-8601.
+#### 7. Таблица `savings_entries`
+Транзакции движения средств по копилкам:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `goal_id` (`INTEGER NOT NULL REFERENCES savings_goals(id) ON DELETE CASCADE`): Копилка.
+- `kind` (`TEXT NOT NULL DEFAULT 'deposit'`):
+  - `deposit`: внесение средств в копилку;
+  - `withdraw_spent`: снятие средств на покупку (связано с записью в `budget_entries`);
+  - `withdraw_free`: снятие средств с возвратом в операционный свободный остаток кошелька.
+- `amount` (`REAL NOT NULL`): Сумма операции (> 0).
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта операции.
+- `date` (`TEXT NOT NULL`): Дата операции `YYYY-MM-DD`.
+- `comment` (`TEXT`): Примечание.
+- `budget_entry_id` (`INTEGER REFERENCES budget_entries(id) ON DELETE SET NULL`): Взаимная ссылка на расход для проводок `withdraw_spent`.
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
-*Индексы*: `idx_debts_person_date` по `(person, date)`, `idx_debts_budget_entry` по `(budget_entry_id)`.
+#### 8. Таблица `debts`
+Журнал учета долгов и совместных чеков:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `person` (`TEXT NOT NULL`): Имя контрагента.
+- `kind` (`TEXT NOT NULL`):
+  - `i_paid`: я заплатил за человека (сальдо $B$ растет);
+  - `he_paid`: человек заплатил за меня (сальдо $B$ падает);
+  - `repay_from_him`: человек вернул мне долг (сальдо $B$ закрывается, кошелек пополняется);
+  - `repay_to_him`: я вернул долг человеку (сальдо $B$ закрывается, кошелек уменьшается).
+- `amount` (`REAL NOT NULL`): Сумма операции (> 0).
+- `currency` (`TEXT NOT NULL DEFAULT 'BYN'`): Валюта долга.
+- `date` (`TEXT NOT NULL`): Дата операции `YYYY-MM-DD`.
+- `comment` (`TEXT`): Комментарий к долгу.
+- `budget_entry_id` (`INTEGER REFERENCES budget_entries(id) ON DELETE CASCADE`): Ссылка на расход бюджета при сплите общего чека.
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
-#### `balance_checks`
-Акты еженедельной сверки виртуального и фактического остатка:
-- `id` (INTEGER, PK, Autoincrement).
-- `date` (TEXT): Дата сверки (`YYYY-MM-DD`).
-- `real_byn` (REAL): Фактическая сумма остатка во всех карманах, выраженная в BYN.
-- `expected_byn` (REAL, Nullable): Расчетный ожидаемый остаток (для первой базовой сверки равен `NULL`).
-- `diff_byn` (REAL, Nullable): Расхождение $\text{diff} = \text{real\_byn} - \text{expected\_byn}$ (для базовой сверки `NULL`).
-- `real_breakdown` (TEXT, Nullable): JSON-снапшот ввода: `{"byn": 1000.0, "usd": 50.0, "eur": 0.0}`.
-- `savings_in_check` (INTEGER): Значение настройки `savings_in_check` на момент выполнения сверки.
-- `adjust_expense_id` (INTEGER, FK -> `budget_entries.id` ON DELETE SET NULL, Nullable): Ссылка на созданный расход в категории «Неучтёнка» (при недостаче $\text{diff} < 0$).
-- `adjust_income_id` (INTEGER, FK -> `income_entries.id` ON DELETE SET NULL, Nullable): Ссылка на созданный доход «Неучтённый приход» (при излишке $\text{diff} > 0$).
-- `comment` (TEXT, Nullable): Комментарий к акту сверки.
-- `created_at` (TEXT): Временная метка ISO-8601.
+*Индексы:*
+- `idx_debts_person_date` по `(person, date)`
+- `idx_debts_budget_entry` по `(budget_entry_id)`
+
+#### 9. Таблица `balance_checks`
+Акты еженедельной ревизии карманов:
+- `id` (`INTEGER PRIMARY KEY AUTOINCREMENT`).
+- `date` (`TEXT NOT NULL`): Дата проведения сверки `YYYY-MM-DD`.
+- `real_byn` (`REAL NOT NULL`): Фактическая сумма денег на руках в BYN.
+- `expected_byn` (`REAL`): Расчетная ожидаемая сумма по проводкам (для базовой сверки `NULL`).
+- `diff_byn` (`REAL`): Расхождение $\text{diff} = \text{real} - \text{expected}$ (для базовой `NULL`).
+- `real_breakdown` (`TEXT`): JSON-снапшот мультивалютного ввода: `{"byn": 1000.0, "usd": 50.0, "eur": 0.0}`.
+- `savings_in_check` (`INTEGER NOT NULL DEFAULT 1`): Состояние настройки на момент сверки.
+- `adjust_expense_id` (`INTEGER REFERENCES budget_entries(id) ON DELETE SET NULL`): Расход в «Неучтёнку» при недостаче ($\text{diff} < 0$).
+- `adjust_income_id` (`INTEGER REFERENCES income_entries(id) ON DELETE SET NULL`): Доход в «Неучтённый приход» при излишке ($\text{diff} > 0$).
+- `comment` (`TEXT`): Примечание.
+- `created_at` (`TEXT NOT NULL`): Метка создания ISO-8601.
 
 ---
 
-## 4. Бизнес-правила и логика расчетов
+## 4. Математические и финансовые формулы системы
 
-### 4.1. Мультивалютная система и конвертация
-1. **Базовая валюта учета**: Все сводные показатели (KPI дашборда, суммарный факт приходов, суммарные расходы, баланс, сверка, графики) рассчитываются в **BYN**.
-2. **Формулы пересчета**:
-   $$\text{BYN} = \begin{cases} 
-   \text{amount}, & \text{если currency} = \text{BYN} \\ 
-   \text{amount} \times \text{usd\_rate}, & \text{если currency} = \text{USD} \\ 
-   \text{amount} \times \text{eur\_rate}, & \text{если currency} = \text{EUR} 
-   \end{cases}$$
-   $$\text{USD} = \frac{\text{BYN}}{\text{usd\_rate}}$$
-3. **Отображение денежных величин (UI Macro `money`)**:
-   - Главная сумма отображается жирным шрифтом в BYN: `1 250.00 BYN`.
-   - Рядом выводится компактный бейдж с долларовым эквивалентом: `≈ $382.26`.
-   - Если исходная операция была создана в валюте (USD или EUR), дополнительно отображается бейдж с номиналом в валюте: `400.00 USD`.
-4. **Сравнения с плавающей точкой**: Все сравнения денежных сумм производятся с точностью $\varepsilon = 0.005$, а результаты округляются до 2 знаков после запятой.
+### 4.1. Мультивалютная конвертация
+Все операции конвертируются в базовую валюту учета (BYN) по актуальным курсам:
+$$\text{to\_byn}(A, C) = \begin{cases}
+A, & \text{если } C = \text{BYN} \\
+A \times \text{usd\_rate}, & \text{если } C = \text{USD} \\
+A \times \text{eur\_rate}, & \text{если } C = \text{EUR}
+\end{cases}$$
 
-### 4.2. Масштабирование планов под выбранный период (Scaling Engine)
-Для корректного сравнения планов и фактов в фильтрах Дашборда и раздела Приходов применяется алгоритм масштабирования частот (`services/planning.py`):
+$$\text{from\_byn}(A_{byn}, C_{target}) = \begin{cases}
+A_{byn}, & \text{если } C_{target} = \text{BYN} \\
+\frac{A_{byn}}{\text{usd\_rate}}, & \text{если } C_{target} = \text{USD} \\
+\frac{A_{byn}}{\text{eur\_rate}}, & \text{если } C_{target} = \text{EUR}
+\end{cases}$$
 
-| Частота источника / конверта | Просмотр за День | Просмотр за Неделю | Просмотр за Месяц | Просмотр за Год |
-|---|---|---|---|---|
-| **Weekly** (Еженедельно) | $\times \frac{1}{7}$ | $\times 1$ | $\times 4$ | $\times 52$ |
-| **Monthly** (Ежемесячно) | $\times \frac{1}{30}$ | $\times \frac{1}{4}$ | $\times 1$ | $\times 12$ |
-| **One-Time** (Разовый доход) | $0$ или Plan* | $0$ или Plan* | $0$ или Plan* | $0$ или Plan* |
+Все расчеты выполняются с машинной точностью $\varepsilon = 0.005$, результаты форматируются с округлением до 2 десятичных знаков.
 
-*\*Правило для разовых доходов (`one_time`)*:
-- Если суммарный факт по источнику $\ge \text{Plan} - 0.005$, то план считается полностью выполненным и возвращает `0.00`, чтобы не раздувать ожидаемый план будущих периодов.
-- Если разовый доход еще не получен и текущая дата попадает в границы просматриваемого интервала, плановая сумма учитывается в полном объеме.
+---
 
-### 4.3. Категории бюджета («Конверты») и изоляция трат из копилок
-- Конверт имеет базовый интервал лимита: `week` или `month`.
-- При переключении режима отображения на странице Бюджета:
-  - Месячная категория на недельном экране отображает лимит: $\frac{\text{Лимит}}{4}$.
-  - Недельная категория на месячном экране отображает лимит: $\text{Лимит} \times 4$.
-- **Изоляция трат из копилок**:
-  - Расходы, совершенные из копилок (`from_goal_id IS NOT NULL`), **не учитываются** в проценте исчерпания лимита конверта (`pct`) и в величинах «Потрачено»/«Осталось» на карточке категории. Траты из накоплений не должны ломать регулярный недельный лимит конверта.
-  - Траты из копилок в полном объеме отображаются в детальной Истории, в аналитической структуре расходов по категориям (с пометкой копилки) и в отдельном KPI дашборда «Из копилок».
-- **Системные категории (`track_only = 1`)**:
-  - Категория «Неучтёнка» отображается без прогресс-бара и лимита (деление на ноль исключено). Ее невозможно удалить или переименовать (`is_system = 1`).
-- **Цветовая градация прогресс-бара**:
-  $$\text{pct} = \min\left(100, \frac{\text{Потрачено}_{\text{собственное, BYN}}}{\text{Плановый лимит}_{\text{BYN}}} \times 100\right)$$
-  - $\text{pct} < 80\%$: Зеленый индикатор (`ok`) — комфортный остаток.
-  - $80\% \le \text{pct} < 100\%$: Желто-оранжевый индикатор (`warning` / `pending`) — внимание, лимит на исходе.
-  - $\text{pct} \ge 100\%$: Красный индикатор (`danger`) — лимит исчерпан или превышен.
-  - Неизрасходованный остаток: $\max(0, \text{Плановый лимит} - \text{Потрачено}_{\text{собственное}})$.
+### 4.2. Свободный денежный остаток (Free Cash Flow)
+Свободный остаток операционного кошелька за период $[T_{start}, T_{end}]$ рассчитывается по строгой формуле денежного потока:
 
-### 4.4. Снятие средств из копилок (Savings Goal Withdrawals)
-Текущий баланс копилки рассчитывается в валюте цели:
-$$\text{Баланс цели} = \sum \text{deposit} - \sum \text{withdraw\_spent} - \sum \text{withdraw\_free}$$
-где каждая сумма предварительно конвертируется в валюту цели: $\text{from\_byn}(\text{to\_byn}(\text{amount}, \text{entry\_currency}), \text{goal\_currency})$.
-
-**Варианты снятия**:
-1. **Цель «Потратил» (`withdraw_spent`)**:
-   - Требует обязательного выбора категории бюджета.
-   - В единой атомарной транзакции создается:
-     - Запись в `savings_entries` (`kind = 'withdraw_spent'`);
-     - Запись в `budget_entries` (`from_goal_id = goal_id`) на ту же сумму, валюту и дату.
-     - Записи взаимно связываются через `savings_entries.budget_entry_id`.
-   - Баланс цели уменьшается; лимит конверта не уменьшается; $Free$ Cash Flow не изменяется (так как деньги уже были списаны из $Free$ при внесении депозита).
-2. **Цель «Вернуть в свободные» (`withdraw_free`)**:
-   - Создается только запись в `savings_entries` (`kind = 'withdraw_free'`).
-   - Расход в бюджете не создается.
-   - Баланс цели уменьшается; свободный остаток $Free$ увеличивается на сумму возврата.
-3. **Валидация**: Запрещено снимать сумму, превышающую текущий баланс копилки (с учетом курсовой конвертации). При попытке овердрафта операция отклоняется с сообщением пользователю.
-4. **Удаление операции снятия**: При удалении записи `withdraw_spent` автоматически удаляется связанный расход в `budget_entries`. Баланс копилки восстанавливается.
-
-### 4.5. Учет долгов и взаимозачетов (Debts & Split Expenses)
-
-#### Вклад операций в баланс долга $B$
-Баланс взаимных расчетов с конкретным человеком ($B$) определяется по правилу: **$B > 0$ означает, что человек должен мне; $B < 0$ означает, что я должен человеку**.
-
-| Тип (`kind`) | Смысл операции | Вклад в $B$ | Влияние на кошелек пользователя |
-|---|---|---|---|
-| `i_paid` | Я заплатил за него | $+amount$ | Реальные деньги ушли из кошелька |
-| `he_paid` | Он заплатил за меня | $-amount$ | Мой долг перед ним вырос |
-| `repay_from_him` | Он вернул мне долг наличными/на карту | $-amount$ | Реальные деньги пришли в кошелек |
-| `repay_to_him` | Я вернул ему долг | $+amount$ | Реальные деньги ушли из кошелька |
-
-Встречные долги автоматически сальдируются (нетто-суммируются), отдельная операция взаимозачета не требуется.
-
-#### Разделение совместных трат (Split Expense)
-В модальном окне списания расхода доступен чекбокс **«Разделить с другим»**:
-- **Сценарий 1: Я оплатил весь чек** (например, чек 60 BYN: моя доля 30, его доля 30):
-  - В `budget_entries` записывается расход только на мою долю: `30 BYN`. Лимит конверта расходуется только на мои траты.
-  - В `debts` записывается долг `i_paid` на его долю: `30 BYN` ($B$ увеличивается на `+30`).
-  - Фактический отток денег из кошелька: $30 + 30 = 60 \text{ BYN}$.
-- **Сценарий 2: Он оплатил весь чек** (чек 60 BYN: моя доля 30, его доля 30):
-  - В `budget_entries` записывается расход на мою долю: `30 BYN`.
-  - В `debts` записывается долг `he_paid` на мою долю: `30 BYN` ($B$ уменьшается на `-30`).
-  - Фактический отток денег из кошелька в момент покупки: $0 \text{ BYN}$ (трата произойдет позже при возврате долга).
-- **Сценарий 3: Я оплатил 100% за него** (моя доля 0):
-  - Расход в бюджет не создается, создается только запись в `debts` (`i_paid`).
-
-#### Каскадное удаление
-При удалении расхода с разделением чек в бюджете каскадно удаляет связанную строку в `debts` благодаря внешнему ключу `ON DELETE CASCADE`.
-
-### 4.6. Формула Свободного остатка (Free Cash Flow)
-Свободный денежный остаток за выбранный отчетный период рассчитывается по уточненной формуле денежных потоков:
-
-$$\text{Free} = \text{Приход} - \text{Расходы}_{\text{собственные}} - \text{Взносы} + \text{Возврат\_в\_свободные} - \Delta B$$
+$$\text{Free} = \text{Inc} - \text{Exp}_{own} - \text{Dep} + \text{W}_{free} - \Delta B$$
 
 где:
-- **$\text{Приход}$**: Сумма всех поступивших доходов за период (`income_entries`).
-- **$\text{Расходы}_{\text{собственные}}$**: Сумма фактических списаний за период, оплаченных из собственных средств (`budget_entries` где `from_goal_id IS NULL`). Расходы из копилок сюда не входят, так как средства уже были учтены при внесении в копилку.
-- **$\text{Взносы}$**: Пополнения копилок за период (`savings_entries` где `kind = 'deposit'`).
-- **$\text{Возврат\_в\_свободные}$**: Снятия из копилок обратно в свободные средства (`savings_entries` где `kind = 'withdraw_free'`).
-- **$\Delta B$**: Чистое изменение баланса долгов за период:
-  $$\Delta B = \sum(\text{i\_paid}) - \sum(\text{he\_paid}) - \sum(\text{repay\_from\_him}) + \sum(\text{repay\_to\_him})$$
-  *(В формулу $\text{Free}$ величина $\Delta B$ входит со знаком минус: когда я плачу за другого, $\Delta B > 0$ и свободный остаток уменьшается; когда мне возвращают долг, $\Delta B < 0$ и свободный остаток увеличивается).*
-
-### 4.7. Сверка с реальным остатком (Balance Reconciliation)
-Сверка позволяет сопоставить расчетный остаток в приложении с реальной суммой денег на картах и в кошельке.
-
-#### 1. Базовая (первичная) сверка
-- Выполняется при первом использовании функции.
-- Пользователь пересчитывает все свои деньги (BYN, USD, EUR) и вводит сумму.
-- Для базовой сверки `expected_byn = NULL`, `diff_byn = NULL`.
-- Точка базовой сверки фиксируется как отправной остаток для будущих проверок.
-
-#### 2. Регулярная сверка (расчет ожидания)
-Для любой последующей сверки ожидаемый остаток рассчитывается от даты предыдущей сверки $T_{\text{prev}}$ до даты текущей сверки $T_{\text{curr}}$ по операциям в интервале $T_{\text{prev}} < \text{date} \le T_{\text{curr}}$:
-
-$$\text{expected} = \text{last\_check.real} + \text{Приход} - \text{Расходы}_{\text{собственные}} - \Delta B - \text{Flows}_{\text{savings}}$$
-
-где $\text{Flows}_{\text{savings}}$ зависят от настройки `savings_in_check`:
-- Если `savings_in_check = 1` (копилки лежат в общей сумме):
-  $$\text{Flows}_{\text{savings}} = \text{Расходы}_{\text{из\_копилок}}$$
-  *(Взносы и возвраты являются перемещениями внутри посчитанных денег и не меняют общую сумму; уменьшает сумму только трата из копилки наружу).*
-- Если `savings_in_check = 0` (копилки лежат на изолированном счете и пользователь их не считает):
-  $$\text{Flows}_{\text{savings}} = \text{Взносы} - \text{Возврат\_в\_свободные}$$
-
-#### 3. Расхождение и автоматическая корректировка
-$$\text{diff} = \text{real\_byn} - \text{expected\_byn}$$
-- **Если $\text{diff} = 0$ (допуск $0.005$)**: Учет абсолютно точен.
-- **Если $\text{diff} < 0$ (недостача)**: Денег по факту меньше, чем в приложении. Создается расход в системной категории «Неучтёнка» на сумму $|\text{diff}|$ с привязкой `adjust_expense_id`. Дата расхода равна дате сверки.
-- **Если $\text{diff} > 0$ (излишек)**: Денег по факту больше. Создается разовый доход «Неучтённый приход» на сумму $\text{diff}$ с привязкой `adjust_income_id`. Дата дохода равна дате сверки.
-- Пользователь может выбрать режим «Не корректировать», если расхождение временное.
+- $\text{Inc} = \sum \text{to\_byn}(amount)$ по всем `income_entries` за период.
+- $\text{Exp}_{own} = \sum \text{to\_byn}(amount)$ по всем `budget_entries` за период, где `from_goal_id IS NULL` (траты из копилок исключены, так как средства уже были учтены при внесении в копилку).
+- $\text{Dep} = \sum \text{to\_byn}(amount)$ по `savings_entries` с `kind = 'deposit'`.
+- $\text{W}_{free} = \sum \text{to\_byn}(amount)$ по `savings_entries` с `kind = 'withdraw_free'`.
+- $\Delta B$ — чистое изменение долгового сальдо за период:
+  $$\Delta B = \sum \text{i\_paid} - \sum \text{he\_paid} - \sum \text{repay\_from\_him} + \sum \text{repay\_to\_him}$$
+  В формуле $\text{Free}$ величина $\Delta B$ вычитается: когда пользователь платит за друга (`i_paid`), $\Delta B > 0$ и свободный остаток уменьшается; когда друг возвращает долг (`repay_from_him`), $\Delta B < 0$ и свободный остаток увеличивается.
 
 ---
 
-## 5. Функциональная спецификация модулей
+### 4.3. Баланс накопительной копилки
+Текущий баланс копилки $G_k$ вычисляется в валюте самой копилки:
+$$\text{Balance}(G_k) = \sum \text{from\_byn}(\text{to\_byn}(\text{amount}, C), C_{goal})$$
+по всем записям копилки, где:
+- `kind = 'deposit'` входит со знаком $+$;
+- `kind = 'withdraw_spent'` входит со знаком $-$;
+- `kind = 'withdraw_free'` входит со знаком $-$.
 
-### 5.1. Модуль «Дашборд» (`/`)
-- **Назначение**: Главный экран оперативного мониторинга финансового статуса.
-- **Элементы управления**: Переключатель периода (`День`, `Неделя`, `Месяц`, `Год`).
-- **Сетка KPI карточек**:
-  1. **Приход**: факт и план поступлений за период.
-  2. **Расходы**: сумма собственных расходов с детальной строкой «в т.ч. из копилок: X BYN».
-  3. **Свободный остаток**: расчетный $Free$ за период по новой формуле Cash Flow с цветовой подсветкой (зеленый / красный).
-  4. **Долги** (кликабельная карточка со ссылкой на `/debts/`): отображает нетто-баланс (зеленый «Вам должны X BYN», красный «Вы должны X BYN» или нейтральный «В расчёте»).
-  5. **Сверка** (кликабельная карточка со ссылкой на `/balance/`): дата последней проверки и статус («Сошлось», «Недостача», «Излишек»).
-- **Аналитические виджеты**:
-  - График структуры расходов по категориям (Chart.js) с бейджами копилок.
-  - График план/факт за 6 месяцев.
-  - Топ конвертов текущей недели.
-  - Ожидаемые поступления.
-
-### 5.2. Модуль «Приходы» (`/income`)
-- Навигация по месяцам (`←`, `Сегодня`, `→`) и фильтрация по периодам.
-- Плашка сводки периода: план, факт, % выполнения.
-- Карточки источников дохода с автоматическим вычислением статуса:
-  - `received` (Получено $\ge 100\%$);
-  - `partial` (Частично получен);
-  - `pending` (Ожидается).
-- Модальные окна: «+ Новый источник», «+ Отметить поступление», «+ Разовый доход».
-
-### 5.3. Модуль «Бюджет» (`/budget`)
-- Переключение недельного и месячного режимов с автоматическим пересчетом масштаба лимитов.
-- Карточки конвертов:
-  - Прогресс-бар с цветовой индикацией (зеленый, желтый, красный).
-  - Учет только собственных трат конверта (исключая траты из копилок).
-  - Системная карточка «Неучтёнка» отображается с маркером `track_only` без прогресс-бара и лимита.
-- Модальное окно **«Списание расхода»**:
-  - Поля: сумма, валюта, дата, комментарий.
-  - Чекбокс **«Разделить с другим»**:
-    - Переключатель «Кто оплатил»: *Я оплатил весь чек* / *Он оплатил весь чек*.
-    - Имя человека (с автоподстановкой дефолтного значения из настроек).
-    - Моя доля и Его доля с авторасчетом второго поля при вводе первого.
-
-### 5.4. Модуль «Накопления» (`/savings`)
-- Группировка копилок по категориям: Хотелки, Резерв, Крупные цели.
-- Карточка цели:
-  - Текущий накопленный баланс в валюте цели с учетом всех взносов и снятий.
-  - Прогресс-бар достижения цели.
-  - Кнопка **«+ Пополнить»** (внесение `deposit`).
-  - Кнопка **«− Снять»** (вызов модального окна снятия).
-- Модальное окно **«Снятие из копилки»**:
-  - Выбор цели вывода:
-    - *«Потратил»*: выпадающий список категорий бюджета, автосоздание расхода с `from_goal_id`.
-    - *«Вернуть в свободные»*: возврат денег в свободный остаток.
-  - Сумма, валюта, дата, комментарий.
-  - Валидация остатка: запрет снятия суммы, превышающей накопленное по цели.
-- Список истории пополнений и снятий внутри карточки (`<details>`) с возможностью удаления ошибочных транзакций (с атомарной очисткой связанных расходов).
-
-### 5.5. Модуль «Долги и взаиморасчеты» (`/debts`)
-- **Сводная карточка баланса**:
-  - Общий нетто-баланс по всем людям.
-  - Детализация по каждому человеку: зеленый бейдж (он должен мне), красный (я должен ему).
-- **Быстрые действия (В 1 тап)**:
-  - Кнопка **«Он вернул мне долг»** (`repay_from_him`).
-  - Кнопка **«Я вернул ему долг»** (`repay_to_him`).
-  - Кнопка **«+ Записать долг»** (ручной ввод `i_paid` или `he_paid`).
-- **Таблица истории долгов**:
-  - Фильтрация по контрагенту.
-  - Отображение типа операции, суммы, валюты, даты, комментария и маркера привязанного расхода бюджета.
-  - Возможность удаления записи долга с мгновенным пересчетом сальдо.
-
-### 5.6. Модуль «Сверка с реальным остатком» (`/balance`)
-- **Форма ввода фактического наличия средств**:
-  - Три удобных поля ввода для одновременного подсчета: Наличные/карты в **BYN**, **USD**, **EUR**.
-  - Динамический JavaScript-калькулятор моментально суммирует общий эквивалент в BYN по актуальным курсам.
-- **Автоматический расчет сверки**:
-  - Отображение даты и суммы предыдущей сверки.
-  - Расчет ожидаемой суммы `expected_byn` по формуле движения денежных средств.
-  - Отображение разницы `diff_byn` с цветовым акцентом (Зеленый: 0.00 BYN, Красный: Недостача, Синий: Излишек).
-- **Разрешение расхождения**:
-  - Радиокнопка: *«Автоматически скорректировать»* (создать расход в «Неучтёнку» или доход в «Неучтённый приход»).
-  - Радиокнопка: *«Не корректировать»* (зафиксировать факт без создания записей движения).
-- **Журнал истории предыдущих сверок**:
-  - Дата сверки, реальный остаток, ожидаемый остаток, расхождение, созданная корректировка, комментарий.
-
-### 5.7. Модуль «История транзакций» (`/history`)
-- Полный хронологический аудит всех финансовых потоков:
-  - Доходы (`income`);
-  - Расходы бюджета (`expense`) с пометкой копилки `[Из копилки: ...]`, если применимо;
-  - Пополнения копилок (`savings_deposit`);
-  - Снятия из копилок (`savings_withdraw`);
-  - Долговые операции (`debt`).
-- Фильтры по диапазону дат, типу операции и категории/источнику.
-- Итоговый футер с раздельной аналитикой приходов, собственных расходов, трат из копилок, взносов, возвратов и движения долгов.
-
-### 5.8. Модуль «Настройки» (`/settings`)
-- Синхронизация с API НБРБ (однокликовое обновление, статус, ручной ввод курсов).
-- **Параметры сверки**: переключатель `savings_in_check` (учитывать ли копилки при сверке).
-- **Параметры взаиморасчетов**: имя контрагента по умолчанию `default_debt_person`.
+Запрет овердрафта: $\text{Balance}(G_k) \ge 0$. Попытка списания суммы больше текущего баланса блокируется на уровне сервисного слоя.
 
 ---
 
-## 6. Спецификация Use Cases (Сценарии использования)
+### 4.4. Сальдо взаиморасчетов по долгам
+Баланс долга с конкретным контрагентом $P$:
+$$B(P) = \sum_{P} (\text{i\_paid} + \text{repay\_to\_him}) - \sum_{P} (\text{he\_paid} + \text{repay\_from\_him})$$
+- $B(P) > 0$: Контрагент должен пользователю.
+- $B(P) < 0$: Пользователь должен контрагенту.
+- $B(P) = 0$: Взаимный расчет закрыт («В расчёте»).
 
-```mermaid
-flowchart TD
-    User([Пользователь])
-    
-    User --> UC1[UC-01: Настройка курсов НБРБ]
-    User --> UC2[UC-02: Создание структуры доходов]
-    User --> UC3[UC-03: Учет поступления дохода]
-    User --> UC4[UC-04: Настройка конвертов бюджета]
-    User --> UC5[UC-05: Списание расхода из конверта]
-    User --> UC6[UC-06: Создание и пополнение копилки]
-    User --> UC7[UC-07: Аудит транзакций в Истории]
-    User --> UC8[UC-08: Анализ Дашборда и закрытие периода]
-    User --> UC10[UC-10: Снятие денег из копилки]
-    User --> UC11[UC-11: Разделение чека при оплате за двоих]
-    User --> UC12[UC-12: Возврат долга и взаимозачет]
-    User --> UC13[UC-13: Еженедельная сверка реального остатка]
+---
+
+### 4.5. Математика сверки остатков карманов (Reconciliation Engine)
+1. **Базовая сверка**: фиксирует точку отсчета $\text{Real}_0$ на дату $T_0$.
+2. **Регулярная сверка на дату $T_1$**: расчет ожидаемого остатка по операциям в интервале $T_0 < date \le T_1$:
+   $$\text{Expected}_1 = \text{Real}_0 + \text{Inc} - \text{Exp}_{own} - \Delta B - \text{Flows}_{savings}$$
+   где $\text{Flows}_{savings}$ зависит от настройки `savings_in_check`:
+   $$\text{Flows}_{savings} = \begin{cases}
+   \sum \text{to\_byn}(\text{budget\_entries.amount})_{\text{from\_goal}}, & \text{если } \text{savings\_in\_check} = 1 \\
+   \text{Dep} - \text{W}_{free}, & \text{если } \text{savings\_in_check} = 0
+   \end{cases}$$
+3. **Расхождение остатка**:
+   $$\text{Diff} = \text{Real}_1 - \text{Expected}_1$$
+   - $\text{Diff} = 0$: Идеальное совпадение.
+   - $\text{Diff} < 0$: Недостача. Создается расход в системной категории «Неучтёнка» на сумму $|\text{Diff}|$.
+   - $\text{Diff} > 0$: Излишек. Создается разовый доход «Неучтённый приход» на сумму $\text{Diff}$.
+
+---
+
+### 4.6. Аналитические формулы здоровья капитала (`/analytics`)
+
+#### 1. Норма сбережений (Savings Rate, $SR$)
+$$SR = \frac{\max(0, \text{Dep} - \text{W}_{free})}{\max(0.01, \text{Inc})} \times 100\%$$
+- $SR \ge 20\%$: Статус `Отлично` (`ok`, зеленый).
+- $10\% \le SR < 20\%$: Статус `Норма` (`warning`, желтый).
+- $SR < 10\%$: Статус `Низкая` (`danger`, красный).
+
+#### 2. Подушка безопасности (Financial Runway, $R$)
+Оценивает автономный запас жизни в месяцах при среднем расходе за последние 90 дней:
+$$\text{AvgExp}_{90} = \frac{\sum_{date \in [Today-90, Today]} \text{Exp}_{own}}{3.0}$$
+$$R = \frac{\text{TotalSavings}}{\max(1.0, \text{AvgExp}_{90})}$$
+где $\text{TotalSavings} = \sum_{k} \text{to\_byn}(\text{Balance}(G_k))$.
+- $R \ge 6.0$ мес: Статус `Капитал` (`stellar`, зеленый).
+- $3.0 \le R < 6.0$ мес: Статус `Надёжно` (`ok`, зеленый).
+- $1.0 \le R < 3.0$ мес: Статус `Минимум` (`warning`, желтый).
+- $R < 1.0$ мес: Статус `Критично` (`danger`, красный).
+
+#### 3. Дисциплина бюджета (Budget Adherence, $Adh$)
+Доля конвертов расходов, не превысивших лимит в текущем месяце:
+$$Adh = \frac{N_{in\_limit}}{N_{total}} \times 100\%$$
+где конверт считается удержанным, если $\text{Spent}_{own} \le \text{Planned}_{scaled}$ или $\text{Planned} = 0$.
+- $Adh \ge 80\%$: Статус `ok` (зеленый).
+- $Adh < 80\%$: Статус `warning` (желтый).
+
+#### 4. Дневной расход (Burn Rate)
+$$\text{Burn} = \frac{\text{Exp}_{own, month}}{\text{Количество дней месяца с 1-го числа}}$$
+
+#### 5. Структура Парето (Закон 80/20)
+Все категории расходов месяца ранжируются по убыванию суммы трат:
+$$S_1 \ge S_2 \ge \dots \ge S_n$$
+Вычисляются накопленные суммы $\text{Cum}(k) = \sum_{i=1}^k S_i$ и кумулятивная доля $\frac{\text{Cum}(k)}{\sum S_i}$.
+Категории, входящие в кумулятивные 80%, помечаются как **Ядро расходов (Core)**.
+
+#### 6. Прогноз сроков закрытия целей (ETA Forecast)
+Для каждой активной цели накопления с целевой суммой $\text{Target}$ и текущим балансом $\text{Current}$:
+1. Рассчитывается среднемесячный темп взносов за последние 90 дней:
+   $$\text{Pace} = \frac{\sum_{date \in [Today-90, Today]} \text{deposit} - \sum \text{withdraw}}{3.0}$$
+2. Если $\text{Pace} > 0$ и $\text{Current} < \text{Target}$:
+   $$\text{MonthsLeft} = \frac{\text{Target} - \text{Current}}{\text{Pace}}$$
+   $$\text{ETA} = \text{Today} + \text{MonthsLeft} \times 30.44 \text{ дней}$$
+3. Если у цели задан дедлайн:
+   - При $\text{ETA} \le \text{Deadline}$: статус `В графике` (`badge-ok`).
+   - При $\text{ETA} > \text{Deadline}$: статус `Отстаёт` (`badge-danger`).
+
+---
+
+## 5. Спецификация модулей приложения
+
+### 5.1. Модуль аутентификации (`routes/auth.py`)
+- Защита всех эндпоинтов декоратором `@login_required`.
+- PIN-код хранится в таблице `settings` (`pin_code`).
+- При запросе неавторизованного пользователя выполняется `302 Redirect` на `/login?next=...`.
+- Модель защиты от брутфорса:
+  - 5 неудачных попыток ввода PIN блокируют IP-адрес на 60 секунд.
+  - Постоянная сессионная cookie с флагами `HttpOnly`, `SameSite=Lax`, `permanent = True` на 365 дней.
+
+### 5.2. Модуль «Дашборд» (`routes/dashboard.py`)
+- **Полоса финансового здоровья (`.health-card`)**:
+  - Карточка с 3-колоночным строгим вертикальным ритмом (`Сбережения`, `Подушка`, `Конверты`).
+  - Тонкие вертикальные разделители между метриками.
+  - Элегантная текстовая ссылка в шапке карточки `Подробный аудит →`.
+- **Переключатель периодов**: `День`, `Неделя`, `Месяц`, `Год`.
+- **Карточки KPI**: Свободный остаток, Приход, Расходы, Всего накоплено, Долги, Сверка.
+- **Интерактивные графики**: Расходы по категориям (Chart.js) и План-факт приходов.
+- **Конверты и Ожидаемые поступления**: компактные списки с нативными ссылками `.section-link` (`В бюджет →`, `В приходы →`) с запретом на перенос текста (`white-space: nowrap !important; flex-shrink: 0 !important;`).
+
+### 5.3. Аналитический хаб и ИИ-Ассистент (`routes/analytics.py`)
+- **4 KPI здоровья капитала**: Сбережения, Подушка, Конверты, Дневной расход.
+- **Водопад Cash Flow (`.waterfall-scroll-container`)**:
+  - Горизонтальный плавный свайп-контейнер (`scroll-snap`) для мобильных устройств.
+  - Аккуратный плавающий чип «Остаток: X BYN» в шапке секции без вертикального сжатия.
+- **Динамика 6 месяцев (`#trendsChart`)**:
+  - Мульти-линейный график Chart.js: Доходы (зеленый), Расходы (коралловый), Сбережения (синий).
+  - Сводный ленточный блок показателей: средний доход, средний расход, средние сбережения, итоговый свободный остаток за полгода.
+- **Структура трат (Парето)**:
+  - Кольцевая диаграмма Donut (`#paretoChart`) со специальной 12-цветной высококонтрастной палитрой (синий `#2563eb`, изумрудный `#10b981`, янтарный `#f59e0b`, фиолетовый `#8b5cf6`, коралловый `#ef4444`, бирюзовый `#06b6d4`, розовый `#ec4899`, оранжевый `#f97316`, индиго `#6366f1`, тиловый `#14b8a6`, лаймовый `#84cc16`, сланцевый `#64748b`).
+  - Структурированный HTML-список категорий справа от диаграммы (цветной маркер, имя, процент доли, сумма в BYN).
+- **Сдвиги расходов**: карточка топ-категорий роста и экономии по сравнению с предшествующим месяцем.
+- **Прогноз достижения целей**: карточки копилок с индикацией темпа пополнения в месяц и расчетной датой закрытия цели (ETA).
+- **ИИ-Консультант (Groq LLM Qwen 3.8-27b)**:
+  - Автоматическая передача структурированного JSON-снапшота финансов в LLM.
+  - Генерация отчета по 4 пунктам: кэшфлоу, точки риска, подушка, практические шаги.
+  - Автономный эвристический фолбэк-движок: при сбоях связи или блокировке Cloudflare моментально генерирует детерминированный аудит на чистом русском языке.
+  - Кнопка «Обновить аудит» (`POST /analytics/refresh-ai`) с асинхронным обновлением DOM без перезагрузки страницы.
+
+### 5.4. Модуль «Бюджет» (`routes/budget.py`)
+- Переключение недельного и месячного циклов конвертов.
+- Модальное окно списания расхода:
+  - Поддержка калькулятора и множителей в комментариях.
+  - Чекбокс «Разделить чек»: выбор «Я оплатил» / «Он оплатил», автоматический расчет долей, создание расхода строго на долю пользователя и создание долговой записи в `debts`.
+
+### 5.5. Модуль «Накопления» (`routes/savings.py`)
+- Карточки копилок (`reserve`, `big`, `want`).
+- Модальное окно пополнения копилки (`deposit`).
+- Модальное окно снятия накоплений:
+  - Вариант «Потратил»: автосоздание расхода в бюджете с `from_goal_id`, списание с баланса цели, отсутствие влияния на недельный лимит конверта.
+  - Вариант «Вернуть в свободные»: возврат средств в операционный кошелек.
+  - Жесткий запрет овердрафта.
+
+### 5.6. Модуль «Долги» (`routes/debts.py`)
+- Сводный баланс взаиморасчетов по каждому контрагенту.
+- Кнопка быстрого закрытия долга («Он вернул долг» / «Я вернул долг») в 1 тап.
+- Ручной ввод долговых операций.
+- Хронологическая таблица долгов.
+
+### 5.7. Модуль «Сверка» (`routes/balance.py`)
+- Форма мультивалютного ввода карманов (BYN, USD, EUR).
+- Мгновенный пересчет общего эквивалента в BYN на клиенте.
+- Расчет ожидаемого баланса по формуле потоков.
+- Определение расхождения $\text{Diff}$ и автоматическая проводка корректировок (расход в «Неучтёнку» или доход в «Неучтённый приход»).
+
+### 5.8. Модуль «История» (`routes/history.py`)
+- Единый сквозной журнал всех типов транзакций.
+- Фильтры по диапазону дат, категории, типу операции.
+- Сводные итоги в подвале журнала.
+
+### 5.9. Модуль «Настройки» (`routes/settings.py`)
+- Принудительная синхронизация курсов НБРБ через API.
+- Настройка PIN-кода доступа.
+- Конфигурация API-ключа Groq и модели.
+- Переключатель опции `savings_in_check`.
+
+---
+
+## 6. Спецификация пользовательского интерфейса (Design System & PWA)
+
+### 6.1. Цветовая палитра и дизайн-токены (Scandinavian Minimalist SaaS)
+Дизайн системы вдохновлен эстетикой скандинавских финтех-сервисов (Linear, Stripe, Raycast, Monarch Money):
+
+```css
+:root {
+  --bg-app: #f7f4ee;              /* Теплый фоновый цвет бумажного полотна */
+  --surface: #ffffff;             /* Чистая карточка */
+  --surface-raised: #fbf9f5;      /* Приподнятый блок / ховер */
+  --hairline: #eae5dc;            /* Тонкая рамка разделения */
+  --hairline-strong: #ded8cb;     /* Акцентная рамка */
+  --text-primary: #1f1b16;        /* Основной контрастный текст */
+  --text-secondary: #5c5549;      /* Вторичный приглушенный текст */
+  --text-muted: #8c8273;          /* Подписи и единицы измерения */
+  --accent: #1b5e3f;              /* Фирменный хвойно-изумрудный акцент */
+  --accent-hover: #144931;        /* Темный хвойный ховер */
+  --accent-light: #e8f3ed;        /* Мягкая изумрудная заливка бейджей */
+  --danger: #c93b3b;              /* Кораллово-красный дефицит / ошибка */
+  --danger-light: #fae8e8;        /* Мягкая красная заливка */
+  --warning: #b87414;             /* Янтарно-золотой статус внимания */
+  --warning-light: #fdf3e7;       /* Мягкая янтарная заливка */
+}
 ```
 
-### UC-10: Снятие накоплений из копилки (покупка или возврат в свободные)
-- **Актор**: Пользователь.
-- **Предусловие**: В разделе «Накопления» есть цель с ненулевым остатком.
-- **Основной поток (Оплата покупки из копилки)**:
-  1. Пользователь открывает раздел «Накопления», нажимает кнопку «− Снять» на карточке цели.
-  2. В модальном окне указывает:
-     - Цель вывода: «Потратил (записать в расход)».
-     - Категория расхода: «Техника и гаджеты».
-     - Сумма: `400`, валюта: `USD`.
-     - Комментарий: «Новый ноутбук».
-  3. Нажимает «Подтвердить снятие».
-  4. Система в единой транзакции списывает $400$ с баланса копилки и создает запись расхода в категории «Техника» с `from_goal_id`.
-  5. Прогресс-бар цели уменьшается, а недельный лимит конверта категории остается нетронутым.
-- **Альтернативный поток (Возврат в кошелек)**:
-  - Пользователь выбирает вариант «Вернуть в свободные деньги». Запись в бюджете не создается, а свободный остаток $Free$ на Дашборде увеличивается на сумму снятия.
-- **Исключительный поток**:
-  - Пользователь вводит сумму больше текущего остатка копилки. Система блокирует операцию и отображает сообщение: *«Нельзя снять больше текущего баланса цели»*.
+### 6.2. Типографика
+- **Основной интерфейсный шрифт**: `Inter` (`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`).
+- **Моноширинный финансовый шрифт**: `JetBrains Mono` (`monospace`). Все денежные суммы, проценты, даты и числовые показатели строго рендерятся в моноширинном начертании (`font-variant-numeric: tabular-nums`) для идеального выравнивания разрядов.
 
-### UC-11: Разделение чека при оплате за двоих (Совместная трата)
-- **Актор**: Пользователь.
-- **Предусловие**: Пользователь оплатил совместный чек в магазине/кафе за себя и соседа (Кент).
-- **Основной поток**:
-  1. Пользователь переходит в «Бюджет» и нажимает «− Списать расход» у категории «Продукты».
-  2. Вводит полную сумму чека: `60.00 BYN`.
-  3. Ставит галочку «Разделить с другим».
-  4. Форма раскрывает поля: «Кто оплатил» (по умолчанию «Я оплатил весь чек»), имя человека («Кент»), «Моя доля» (`30.00`), «Его доля» (`30.00`).
-  5. Нажимает «Списать».
-  6. Система создает расход в бюджете строго на `30.00 BYN` (лимит конверта расходуется только на долю пользователя) и создает запись в таблице `debts` с типом `i_paid` на `30.00 BYN` ($B = +30.00$).
+### 6.3. Адаптивная сетка и брейкпоинты
+- **Desktop (> 840px)**:
+  - Фиксированный вертикальный монолитный сайдбар слева шириной `220px`.
+  - Основной контент шириной до `1180px` с плавным центрированием.
+  - Нижняя навигация и мобильная шапка скрыты (`display: none`).
+- **Tablet & Mobile (<= 840px)**:
+  - Сайдбар полностью скрыт (`display: none !important`).
+  - Верхняя плавающая шапка с логотипом и курсами валют (`.mobile-topbar`, `height: 58px`, `backdrop-filter: blur(14px)`).
+  - Фиксированная нижняя навигация (`.bottom-nav`, `height: 66px + safe-area-inset-bottom`).
+  - 4 ключевых раздела (`Дашборд`, `Бюджет`, `Приходы`, `Копилки`) + кнопка модального меню «Ещё» (для доступа к `Аналитике`, `Долгам`, `Сверке`, `Истории` и `Настройкам`).
+- **Small Mobile (<= 380px)**:
+  - Автоматическое сворачивание двухколоночных сеток в одну колонку.
+  - Компактный размер шрифтов и минимальные внутренние отступы карточек.
 
-### UC-12: Фиксация возврата долга и сальдирование
-- **Актор**: Пользователь.
-- **Предусловие**: Баланс долга с Кентом положительный ($+30.00$ BYN — Кент должен пользователю).
-- **Основной поток**:
-  1. Кент переводит пользователю `30.00 BYN` на карту.
-  2. Пользователь открывает раздел «Долги» со смартфона (через нижнее меню «Ещё» $\rightarrow$ «Долги»).
-  3. На карточке баланса Кента нажимает быструю зеленую кнопку «Он вернул долг».
-  4. Сумма автоматически предзаполнена суммой долга (`30.00`). Пользователь нажимает «Сохранить».
-  5. Система вносит запись `repay_from_him`. Баланс долга становится равным `0.00 BYN` («В расчёте»). Свободный остаток на Дашборде увеличивается на `30.00 BYN`.
-
-### UC-13: Еженедельная 5-минутная сверка баланса карманов
-- **Актор**: Пользователь.
-- **Предусловие**: Прошла неделя с момента последней сверки.
-- **Основной поток**:
-  1. Пользователь открывает раздел «Сверка» (`/balance/`).
-  2. Открывает банковские приложения и пересчитывает наличные в кошельке:
-     - Вводит остаток в BYN (например, `850.00`);
-     - Вводит остаток в USD (например, `100.00`);
-     - Калькулятор на лету рассчитывает общий эквивалент: `1177.00 BYN`.
-  3. Система вычисляет ожидаемую сумму по операциям за прошедшую неделю (например, `1187.00 BYN`) и фиксирует расхождение: `−10.00 BYN` (недостача).
-  4. Пользователь оставляет включенной опцию «Автоматически скорректировать» и нажимает «Зафиксировать сверку».
-  5. Система сохраняет акт сверки в `balance_checks` и автоматически создает расход `10.00 BYN` в категории «Неучтёнка» на текущую дату.
-  6. Карточка Сверки на Дашборде загорается зеленым индикатором «Сошлось».
+### 6.4. Жесткие правила верстки компонентов
+1. **Запрет разрыва слов в бейджах и кнопках**:
+   Все классы `.badge`, `.kpi-badge`, `.btn`, `.btn-sm`, `.section-link` строго снабжены `white-space: nowrap !important; flex-shrink: 0 !important;`. Ни при каких условиях стрелки `→` или текст статусов не переносятся на вторую строчку.
+2. **Адаптивные заголовки секций (`.section-head`)**:
+   На мобильных устройствах заголовки карточек с кнопками или чипами автоматически выстраиваются в вертикальный стек (`flex-direction: column; align-items: flex-start; gap: 10px;`), гарантируя 100% ширины заголовку и естественный размер кнопке действия.
+3. **Монолитность навигации**:
+   Полностью устранены браузерные конфликты View Transitions: сайдбар на десктопе никогда не перекрывается снимком контента и не прыгает при переходах.
 
 ---
 
-## 7. Верификация и тестирование
+## 7. Сценарии использования (Use Cases)
 
-Проект снабжен встроенным тестовым набором в `scripts/verify_db.py`, который запускает автоматические тесты бизнес-правил:
-- **Smoke-тесты**: Валидация схемы таблиц SQLite/PostgreSQL, дефолтных настроек, системной категории «Неучтёнка» и доступности всех HTTP-эндпоинтов (код 200).
-- **Тест A (Снятие «Потратил»)**: Пополнение копилки, снятие $200$ на расход, проверка баланса цели, создания расхода с `from_goal_id`, неизменности лимита категории (0%) и отсутствия повторного списания из Free.
-- **Тест B (Снятие «Вернуть в свободные»)**: Возврат $100$ из копилки в наличные, увеличение Free на $+100$.
-- **Тест C (Запрет овердрафта)**: Попытка снять больше текущего баланса копилки отклоняется с ошибкой.
-- **Тест D (Совместная трата — «Я оплатил»)**: Чек 60 BYN (30 моя доля, 30 доля соседа), расход в бюджет на 30, долг $B = +30$, отток из кошелька $Free = -60$.
-- **Тест E (Встречный долг — «Он оплатил»)**: Встречная оплата соседа на 20, сальдо $B$ уменьшается до $+10$, Free не изменяется.
-- **Тест F (Возврат долга соседа)**: Сосед возвращает 10 BYN, долг $B = 0$, Free увеличивается на $+10$.
-- **Тест G (Оплата 100% за соседа)**: Пользователь платит 40 BYN полностью за соседа; расход в бюджете не создается, долг $B$ увеличивается на $+40$.
-- **Тест H (Целостность и каскадное удаление)**: Удаление совместного расхода каскадно удаляет долг; удаление снятия из копилки возвращает средства на баланс цели.
-- **Тест I (Сверка остатка)**: Базовая сверка, накопление недельных потоков, расчет `expected`, фиксация расхождения и создание корректирующей записи в «Неучтёнку».
-- **Тест J (Защита системной категории)**: Проверка флагов `is_system = 1` и `track_only = 1`.
-- **Тест K (Идемпотентность миграций)**: Повторный запуск `migrate_db` на заполненной базе выполняется без ошибок и дублирования данных.
+| Код | Название сценария | Описание и результат |
+|---|---|---|
+| **UC-01** | Авторизация по PIN-коду | Пользователь вводит 4 цифры, система проверяет хэш и открывает сессию на 365 дней. |
+| **UC-02** | Просмотр сводки дашборда | Пользователь переключает период (Месяц) и видит свободный остаток, приход, расход и карточку здоровья. |
+| **UC-03** | Списание расхода из конверта | Ввод суммы `25.50 BYN`, категории «Продукты», комментарий `Евроопт`. Конверт списывает лимит, $Free$ падает на 25.50. |
+| **UC-04** | Разделение чека при оплате за двоих | Чек 80 BYN в кафе: моя доля 40, доля друга 40. Конверт тратит 40, долг друга растет на 40, из кошелька уходит 80. |
+| **UC-05** | Возврат долга другом | Друг перевел 40 BYN. Нажатие «Он вернул долг» в 1 тап. Долг закрыт ($B=0$), $Free$ увеличился на 40 BYN. |
+| **UC-06** | Пополнение накопительной копилки | Внесение 300 BYN в цель «Подушка безопасности». Баланс копилки растет, $Free$ уменьшается на 300 BYN. |
+| **UC-07** | Целевая покупка из накоплений | Снятие 200 BYN из копилки «Ноутбук» с выбором «Потратил» в категорию «Техника». Баланс копилки падает, расход создан с `from_goal_id`, лимит конверта не пострадал, $Free$ не изменился. |
+| **UC-08** | Возврат накоплений в кошелек | Снятие 100 BYN с выбором «Вернуть в свободные». Баланс цели падает на 100, $Free$ увеличивается на 100 BYN. |
+| **UC-09** | Еженедельная сверка карманов | Ввод наличности и остатка карт (BYN, USD, EUR). При недостаче 15 BYN система списывает 15 BYN в «Неучтёнку». |
+| **UC-10** | Анализ здоровья и 6-месячных трендов | Открытие `/analytics`: просмотр нормы сбережений, запаса подушки в месяцах, цепочки Waterfall и динамики за полгода. |
+| **UC-11** | Анализ ядра расходов Парето | Просмотр 12-цветной круговой диаграммы: определение категорий, формирующих 80% трат, и проверка сдвигов к прошлому месяцу. |
+| **UC-12** | Прогноз дедлайнов целей (ETA) | Анализ карточек копилок: просмотр темпа пополнения в BYN/мес и расчетного месяца закрытия цели. |
+| **UC-13** | Запуск ИИ-аудита | Нажатие кнопки «Обновить аудит»: получение структурированного отчета Groq LLM (Qwen 3.8-27b) с форматированием. |
+| **UC-14** | Синхронизация курсов НБРБ | Нажатие иконки обновления в виджете валют: подгрузка свежих курсов USD/EUR через REST API Нацбанка РБ. |
+| **UC-15** | Добавление нового источника дохода | Создание регулярного источника «Клиентский контракт» с планом 1500 USD/мес. |
+| **UC-16** | Установка PWA на смартфон | Открытие сайта в Safari на iOS, выбор «На экран Домой»: появление полноценного приложения с кастомной иконкой. |
 
 ---
 
-## 8. Перспективы и Roadmap развития
-1. **Экспорт и импорт данных**:
-   - Выгрузка всей истории операций, актов сверок и долгов в формат CSV/Excel.
-   - Импорт банковских выписок (CSV белорусских банков: Альфа-Банк, Приорбанк, МТБанк, Беларусбанк).
-2. **Управление архивом**:
-   - Архивирование старых категорий и завершенных целей накопления без удаления истории.
-3. **Интерактивные виджеты и PWA**:
-   - Поддержка Offline Service Worker (PWA) для мгновенного добавления расходов без интернета.
-4. **Уведомления и Telegram-бот**:
-   - Бот для быстрого добавления трат прямо из мессенджера Telegram текстовой строкой вида `35 продукты Евроопт` или `сосед 15 пицца`.
+## 8. Эксплуатация и развертывание на сервере (Production Runbook)
+
+### 8.1. Системные требования
+- **ОС**: Debian 12 / 13 (Trixie) или Ubuntu 22.04 / 24.04 LTS
+- **Архитектура**: x86_64 или aarch64
+- **Ресурсы**: 1 vCPU, 1 GB RAM, 10 GB SSD
+- **Порты**: TCP 80 (HTTP), TCP 443 (HTTPS), TCP 22 (SSH)
+
+### 8.2. Сервисный юнит Systemd (`/etc/systemd/system/finance.service`)
+```ini
+[Unit]
+Description=AkselMoney Production Application
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/finance
+Environment="PATH=/opt/finance/venv/bin:/usr/local/bin:/usr/bin"
+Environment="SECRET_KEY=production-crypto-random-secret-key"
+Environment="PIN_CODE=9002"
+Environment="GROQ_API_KEY=gsk_your_groq_api_key_here"
+Environment="DATABASE_PATH=/opt/finance/finance.db"
+ExecStart=/opt/finance/venv/bin/gunicorn \
+    --workers 3 \
+    --bind 127.0.0.1:5000 \
+    --timeout 60 \
+    --access-logfile /var/log/finance-access.log \
+    --error-logfile /var/log/finance-error.log \
+    app:app
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 8.3. Конфигурация Nginx Reverse Proxy (`/etc/nginx/sites-available/finance`)
+```nginx
+server {
+    listen 80;
+    server_name 146.19.142.116 your-domain.com;
+
+    client_max_body_size 20M;
+
+    # Статические файлы отдаются Nginx напрямую минуя Python
+    location /static/ {
+        alias /opt/finance/static/;
+        expires 30d;
+        add_header Cache-Control "public, max-age=2592000, immutable";
+        access_log off;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 15s;
+    }
+}
+```
+
+### 8.4. Регламент резервного копирования базы данных
+Резервная копия SQLite создается средствами утилиты `sqlite3` в режиме онлайн без остановки веб-сервера:
+```bash
+#!/bin/bash
+# Скрипт ежедневного бэкапа: /opt/finance/scripts/backup.sh
+BACKUP_DIR="/opt/finance/backups"
+TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+mkdir -p "$BACKUP_DIR"
+
+sqlite3 /opt/finance/finance.db ".backup '$BACKUP_DIR/finance_$TIMESTAMP.db'"
+gzip "$BACKUP_DIR/finance_$TIMESTAMP.db"
+
+# Удаление копий старше 30 дней
+find "$BACKUP_DIR" -type f -name "*.db.gz" -mtime +30 -delete
+```
+
+### 8.5. Регламент доставки обновлений (Zero-Data-Loss Deploy)
+Файлы базы данных (`finance.db*`) находятся в `.gitignore` и никогда не затираются при обновлении:
+```bash
+# 1. На локальной машине: сборка дистрибутива
+tar -czf update.tar.gz \
+    --exclude='finance.db*' \
+    --exclude='__pycache__' \
+    --exclude='*.pyc' \
+    app.py config.py routes/ services/ static/ templates/
+
+# 2. Передача архива на сервер
+scp update.tar.gz root@146.19.142.116:/tmp/update.tar.gz
+
+# 3. Применение на сервере и бесшовный рестарт
+ssh root@146.19.142.116 "tar -xzf /tmp/update.tar.gz -C /opt/finance && rm /tmp/update.tar.gz && systemctl restart finance && systemctl is-active finance"
+```
+
+---
+
+## 9. Заключение
+Настоящая спецификация является исчерпывающим эталонным документом архитектуры, логики, математических формул и эксплуатационных процедур проекта **AkselMoney**. Любые последующие доработки системы должны строго соответствовать описанным контрактам данных и бизнес-правилам.
