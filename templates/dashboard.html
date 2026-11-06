@@ -14,33 +14,37 @@
   </div>
 </header>
 
-<!-- Полоса финансового здоровья -->
-<section class="health-ribbon card">
-  <div class="health-ribbon-item">
-    <span class="health-ribbon-label">Сбережения</span>
-    <div class="health-ribbon-val-row">
-      <strong class="health-ribbon-val {% if health.savings_rate_status == 'ok' %}text-accent{% elif health.savings_rate_status == 'danger' %}text-danger{% endif %}">{{ health.savings_rate }}%</strong>
-      <span class="badge badge-compact {% if health.savings_rate_status == 'ok' %}badge-ok{% elif health.savings_rate_status == 'warning' %}badge-warning{% else %}badge-danger{% endif %}">{{ 'топ' if health.savings_rate >= 20 else ('норма' if health.savings_rate >= 10 else 'мало') }}</span>
+<!-- Карточка финансового здоровья -->
+<section class="card health-card">
+  <div class="health-card-head">
+    <div class="health-card-title">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+      <span>Финансовое здоровье</span>
+    </div>
+    <a href="{{ url_for('analytics.index') }}" class="health-card-link">
+      <span>Подробный аудит</span>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
+  </div>
+  <div class="health-card-metrics">
+    <div class="health-metric">
+      <span class="health-metric-label">Сбережения</span>
+      <strong class="health-metric-val {% if health.savings_rate_status == 'ok' %}text-accent{% elif health.savings_rate_status == 'danger' %}text-danger{% endif %}">{{ health.savings_rate }}%</strong>
+      <span class="health-metric-status {% if health.savings_rate_status == 'ok' %}text-accent{% elif health.savings_rate_status == 'danger' %}text-danger{% else %}text-muted{% endif %}">{{ health.savings_rate_label }}</span>
+    </div>
+    <div class="health-metric-divider"></div>
+    <div class="health-metric">
+      <span class="health-metric-label">Подушка</span>
+      <strong class="health-metric-val">{{ health.runway_months }} <span class="kpi-val-unit">мес</span></strong>
+      <span class="health-metric-status {% if health.runway_status in ('ok', 'stellar') %}text-accent{% elif health.runway_status == 'warning' %}text-warning{% else %}text-danger{% endif %}">{{ health.runway_label }}</span>
+    </div>
+    <div class="health-metric-divider"></div>
+    <div class="health-metric">
+      <span class="health-metric-label">Конверты</span>
+      <strong class="health-metric-val">{{ health.adherence_pct }}%</strong>
+      <span class="health-metric-status text-muted">{{ health.in_limit_count }} из {{ health.total_envelopes }}</span>
     </div>
   </div>
-  <div class="health-ribbon-item">
-    <span class="health-ribbon-label">Подушка</span>
-    <div class="health-ribbon-val-row">
-      <strong class="health-ribbon-val">{{ health.runway_months }} <span class="kpi-val-unit">мес</span></strong>
-      <span class="badge badge-compact {% if health.runway_status in ('ok', 'stellar') %}badge-ok{% elif health.runway_status == 'warning' %}badge-warning{% else %}badge-danger{% endif %}">{{ 'надежно' if health.runway_status in ('ok', 'stellar') else ('норма' if health.runway_status == 'warning' else 'мало') }}</span>
-    </div>
-  </div>
-  <div class="health-ribbon-item">
-    <span class="health-ribbon-label">Конверты</span>
-    <div class="health-ribbon-val-row">
-      <strong class="health-ribbon-val">{{ health.adherence_pct }}%</strong>
-      <span class="badge badge-compact {% if health.adherence_status == 'ok' %}badge-ok{% else %}badge-warning{% endif %}">{{ health.in_limit_count }}/{{ health.total_envelopes }}</span>
-    </div>
-  </div>
-  <a href="{{ url_for('analytics.index') }}" class="health-ribbon-action" title="Перейти в подробную аналитику">
-    <span>Аналитика</span>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-  </a>
 </section>
 
 <!-- Быстрые инсайты -->
