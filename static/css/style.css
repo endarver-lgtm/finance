@@ -3492,26 +3492,44 @@ body.modal-open {
   color: var(--text-primary);
 }
 
-.ai-review-content p {
-  margin: 6px 0;
+.ai-review-content p,
+.ai-p {
+  margin: 0 0 10px 0;
+  line-height: 1.6;
 }
 
 .ai-heading {
-  font-size: 14.5px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--text-primary);
-  margin: 14px 0 6px 0;
+  margin: 18px 0 8px 0;
+}
+
+.ai-heading:first-child {
+  margin-top: 0;
 }
 
 .ai-list {
-  margin: 6px 0 10px 18px;
+  margin: 8px 0 12px 20px;
   padding: 0;
+}
+
+ul.ai-list {
   list-style-type: disc;
 }
 
+ol.ai-list {
+  list-style-type: decimal;
+}
+
 .ai-list li {
-  margin-bottom: 4px;
-  line-height: 1.5;
+  margin-bottom: 6px;
+  line-height: 1.55;
+}
+
+.ai-review-content strong {
+  font-weight: 600;
+  color: var(--text-primary);
 }
 
 .ai-section-head {

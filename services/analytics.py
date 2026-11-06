@@ -1153,6 +1153,76 @@ def generate_smart_insights(ref: Optional[date] = None) -> list[dict]:
     return insights
 
 
+def format_ai_markdown(text: str) -> str:
+    """Преобразует markdown-разметку LLM в чистый семантический HTML с абзацами и списками."""
+    if not text:
+        return ""
+    import re
+
+    # 1. Жирный шрифт **текст** -> <strong>
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    # 2. Курсив *текст* -> <em>
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+
+    lines = text.strip().split('\n')
+    output = []
+    in_ul = False
+    in_ol = False
+
+    for line in lines:
+        s = line.strip()
+        if not s:
+            if in_ul:
+                output.append('</ul>')
+                in_ul = False
+            if in_ol:
+                output.append('</ol>')
+                in_ol = False
+            continue
+
+        # Заголовки ### и ##
+        if s.startswith('### '):
+            if in_ul: output.append('</ul>'); in_ul = False
+            if in_ol: output.append('</ol>'); in_ol = False
+            output.append(f'<h4 class="ai-heading">{s[4:].strip()}</h4>')
+            continue
+        elif s.startswith('## '):
+            if in_ul: output.append('</ul>'); in_ul = False
+            if in_ol: output.append('</ol>'); in_ol = False
+            output.append(f'<h3 class="ai-heading">{s[3:].strip()}</h3>')
+            continue
+
+        # Маркированный список (- , * , • )
+        bullet_match = re.match(r'^[-*•]\s+(.+)', s)
+        if bullet_match:
+            if in_ol: output.append('</ol>'); in_ol = False
+            if not in_ul:
+                output.append('<ul class="ai-list">')
+                in_ul = True
+            output.append(f'<li>{bullet_match.group(1)}</li>')
+            continue
+
+        # Нумерованный список (1. , 2. )
+        num_match = re.match(r'^\d+[\.\)]\s+(.+)', s)
+        if num_match:
+            if in_ul: output.append('</ul>'); in_ul = False
+            if not in_ol:
+                output.append('<ol class="ai-list">')
+                in_ol = True
+            output.append(f'<li>{num_match.group(1)}</li>')
+            continue
+
+        # Обычный абзац текста
+        if in_ul: output.append('</ul>'); in_ul = False
+        if in_ol: output.append('</ol>'); in_ol = False
+        output.append(f'<p class="ai-p">{s}</p>')
+
+    if in_ul: output.append('</ul>')
+    if in_ol: output.append('</ol>')
+
+    return '\n'.join(output)
+
+
 def generate_ai_review(ref: Optional[date] = None) -> dict:
     """
     ИИ-аудит (Этап G):
@@ -1236,16 +1306,21 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
             active_model_name = custom_model or "llama-3.3-70b-versatile"
 
         prompt = (
-            "Ты — строгий финансовый аналитик системы AkselMoney. Проанализируй агрегированные показатели:\n"
+            "Ты — опытный финансовый аналитик системы AkselMoney. "
+            "Проведи глубокий, конкретный и структурированный аудит финансов пользователя без «воды», "
+            "опираясь исключительно на предоставленные расчетные цифры:\n"
             f"{json.dumps(data_snapshot, ensure_ascii=False, indent=2)}\n\n"
-            "ПРАВИЛА:\n"
-            "1. Используй ТОЛЬКО переданные числа, ничего не пересчитывай.\n"
-            "2. Если показатель равен null, не выдумывай его, укажи что данных недостаточно.\n"
-            "3. Структура ответа (3 лаконичных блока):\n"
-            "   - **Главный финансовый вывод** (1-2 емких предложения о профиците/дефиците и норме сбережений).\n"
-            "   - **Ключевые точки риска** (перерасход по темпу, сдвиги трат или недостаточный резерв).\n"
-            "   - **Конкретные рекомендации** (2-3 четких шага на ближайшие 2 недели).\n"
-            "Форматируй ответ аккуратным Markdown с маркерами."
+            "ТРЕБОВАНИЯ К ОФОРМЛЕНИЮ И СТИЛЮ:\n"
+            "1. Не используй банальности, вводные слова («в современном мире», «деньги любят счет») и общие рассуждения.\n"
+            "2. Включай конкретные числа из сводки (сумму дефицита/профицита, норму сбережений %, дневной лимит, подушку в месяцах, ядро трат).\n"
+            "3. Ответ разбей ровно на 3 смысловых блока с заголовками уровня ### и списками:\n\n"
+            "### 📊 Финансовый баланс и динамика\n"
+            "Подробный разбор: текущий статус (профицит/дефицит с точной цифрой), куда уходят деньги, реальная норма сбережений и соблюдение лимитов.\n\n"
+            "### ⚠️ Точки риска и утечки бюджета\n"
+            "Конкретные угрозы списком: скорость ежедневного сжигания (Burn rate в день), категории с наибольшей долей трат (ядро расходов), уязвимость финансовой подушки.\n\n"
+            "### 🎯 План действий на ближайшие 2–3 недели\n"
+            "3–4 конкретных практических шага с ориентировочными цифрами (какой безопасный дневной расход держать, где сократить расходы, сколько направить в резерв).\n\n"
+            "Обязательно отделяй заголовки, списки и абзацы пустыми строками!"
         )
 
         headers = {
@@ -1261,11 +1336,11 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
             req_data = json.dumps({
                 "model": active_model_name,
                 "messages": [
-                    {"role": "system", "content": "Ты персональный финансовый аудитор. Будь объективен, строг и точен."},
+                    {"role": "system", "content": "Ты персональный финансовый аудитор. Будь объективен, строг, точен и полезен."},
                     {"role": "user", "content": prompt},
                 ],
                 "temperature": 0.3,
-                "max_tokens": 600,
+                "max_tokens": 850,
             }).encode("utf-8")
 
             req = urllib.request.Request(
@@ -1276,7 +1351,8 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
             )
             with urllib.request.urlopen(req, timeout=35) as response:
                 resp_json = json.loads(response.read().decode("utf-8"))
-                llm_text = resp_json["choices"][0]["message"]["content"]
+                llm_raw = resp_json["choices"][0]["message"]["content"]
+                llm_text = format_ai_markdown(llm_raw)
                 is_live = True
         except urllib.error.HTTPError as e:
             err_body = ""
@@ -1304,17 +1380,19 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
         safe_desc = f"{metrics['safe_per_day']:.2f} BYN/день"
         cf_desc = f"{m.cash_flow:.2f} BYN"
 
-        llm_text = (
-            f"### Сводный аудит за {month_label(start_m)}\n\n"
+        raw = (
+            f"### 📊 Финансовый баланс за {month_label(start_m)}\n\n"
             f"**Ключевой баланс:** Чистый денежный поток месяца составляет **{cf_desc}**, "
             f"норма сбережений зафиксирована на уровне **{sr_desc}**.\n\n"
-            f"**Контроль лимитов и темпа:**\n"
-            f"- Допустимый переменный расход: **{safe_desc}**.\n"
-            f"- Подушка безопасности (Runway): **{rw_desc}** ({metrics['runway_label']}).\n"
-            f"- Точность финансового учёта: **{metrics['accuracy_pct'] or '100'}%**.\n\n"
-            f"**Фокус внимания:** Контролируйте ядро расходов ({', '.join(shifts['pareto_core'][:2]) or 'переменные траты'}) "
-            f"и удерживайте дневной расход в рамках безопасного коридора."
+            f"### ⚠️ Контроль лимитов и темпа\n\n"
+            f"* Допустимый переменный расход: **{safe_desc}**.\n"
+            f"* Подушка безопасности (Runway): **{rw_desc}** ({metrics['runway_label']}).\n"
+            f"* Точность финансового учёта: **{metrics['accuracy_pct'] or '100'}%**.\n\n"
+            f"### 🎯 Фокус внимания на 2 недели\n\n"
+            f"* Контролируйте ядро расходов ({', '.join(shifts['pareto_core'][:2]) or 'переменные траты'}).\n"
+            f"* Удерживайте дневной расход в рамках безопасного коридора."
         )
+        llm_text = format_ai_markdown(raw)
 
     return {
         "text": llm_text,
