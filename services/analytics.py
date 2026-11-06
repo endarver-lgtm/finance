@@ -1274,7 +1274,7 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
                 headers=headers,
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=14) as response:
+            with urllib.request.urlopen(req, timeout=35) as response:
                 resp_json = json.loads(response.read().decode("utf-8"))
                 llm_text = resp_json["choices"][0]["message"]["content"]
                 is_live = True
