@@ -7,8 +7,14 @@ from db.settings import get_setting, seed_settings, set_setting
 def init_db():
     with get_db() as conn:
         for statement in SCHEMA_STATEMENTS:
-            conn.execute(statement)
+            try:
+                conn.execute(statement)
+            except Exception:
+                # Индекс может ссылаться на колонку, которая ещё не добавлена через migrate_db
+                pass
         migrate_db(conn)
+        for statement in SCHEMA_STATEMENTS:
+            conn.execute(statement)
         seed_settings(conn)
 
 
