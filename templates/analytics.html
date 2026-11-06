@@ -412,10 +412,17 @@
   <div class="ai-review-box">
     <div class="ai-review-header-row">
       <div class="ai-review-label">Сводное заключение аналитика:</div>
-      <span class="badge {% if ai_review.is_ai_live %}badge-ok{% else %}badge-neutral{% endif %}" id="aiReviewBadge">
+      <span class="badge {% if ai_review.is_ai_live %}badge-ok{% elif ai_review.error_hint %}badge-danger{% else %}badge-neutral{% endif %}" id="aiReviewBadge">
         ✨ {{ ai_review.model }}
       </span>
     </div>
+    {% if ai_review.error_hint %}
+    <div class="alert alert-warning font-sm" id="aiReviewError" style="margin: 10px 0 14px 0; font-size: 12px; padding: 8px 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-sm); color: var(--text-primary);">
+      ⚠️ {{ ai_review.error_hint }}
+    </div>
+    {% else %}
+    <div class="alert alert-warning font-sm" id="aiReviewError" style="display: none; margin: 10px 0 14px 0; font-size: 12px; padding: 8px 12px; background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.25); border-radius: var(--radius-sm); color: var(--text-primary);"></div>
+    {% endif %}
     <div class="ai-review-content" id="aiReviewText">
       {{ ai_review.text | safe }}
     </div>

@@ -31,6 +31,10 @@ def index():
 
         ai_api_key = request.form.get("ai_api_key", "").strip()
         set_setting("ai_api_key", ai_api_key)
+        ai_base_url = request.form.get("ai_base_url", "").strip()
+        set_setting("ai_base_url", ai_base_url)
+        ai_model = request.form.get("ai_model", "").strip()
+        set_setting("ai_model", ai_model)
 
         flash("Настройки сохранены", "success")
         return redirect(url_for("settings.index"))
@@ -43,6 +47,8 @@ def index():
         savings_in_check=get_setting("savings_in_check", "1"),
         default_debt_person=get_setting("default_debt_person", "Кент"),
         ai_api_key=get_setting("ai_api_key", ""),
+        ai_base_url=get_setting("ai_base_url", ""),
+        ai_model=get_setting("ai_model", ""),
     )
 
 

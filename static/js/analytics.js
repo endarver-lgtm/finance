@@ -105,9 +105,18 @@ function initAnalyticsCharts() {
         const data = await resp.json();
         if (data.success && data.text) {
           reviewContent.innerHTML = data.text;
+          const errBox = document.getElementById('aiReviewError');
+          if (errBox) {
+            if (data.error_hint) {
+              errBox.textContent = '⚠️ ' + data.error_hint;
+              errBox.style.display = 'block';
+            } else {
+              errBox.style.display = 'none';
+            }
+          }
           if (reviewBadge && data.model) {
             reviewBadge.textContent = '✨ ' + data.model;
-            reviewBadge.className = data.is_ai_live ? 'badge badge-ok' : 'badge badge-neutral';
+            reviewBadge.className = data.is_ai_live ? 'badge badge-ok' : (data.error_hint ? 'badge badge-danger' : 'badge badge-neutral');
           }
         }
       } catch (e) {

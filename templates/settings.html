@@ -74,11 +74,20 @@
 
     <h2>ИИ-Аналитик (Опционально)</h2>
     <p class="muted font-sm" style="margin-bottom: 12px;">
-      Для генерации углублённых персональных отчётов нейросетью можно указать API-ключ (OpenRouter или Gemini). Если ключ не указан, работает встроенный эвристический фин-советник.
+      Для генерации углублённых персональных отчётов нейросетью укажите API-ключ (Groq, DeepSeek, OpenRouter). Если ключ не указан, работает встроенный эвристический фин-советник.
     </p>
-    <label>API-ключ (OpenRouter / Gemini)
-      <input type="password" name="ai_api_key" value="{{ ai_api_key }}" placeholder="sk-or-v1-...">
-      <span class="form-hint">Безопасно сохраняется локально в конфигурации приложения</span>
+    <label>API-ключ
+      <input type="password" name="ai_api_key" value="{{ ai_api_key }}" placeholder="gsk_... / sk-...">
+      <span class="form-hint">Поддерживаются ключи Groq (gsk_...), DeepSeek (sk-...), OpenRouter (sk-or-...)</span>
+    </label>
+
+    <label style="margin-top: 14px;">API Base URL (Опционально / Прокси)
+      <input type="text" name="ai_base_url" value="{{ ai_base_url }}" placeholder="Автоопределение (или https://api.deepseek.com/v1)">
+      <span class="form-hint">Если Groq блокирует сервер по GeoIP (403), укажите прокси или URL другого совместимого сервиса</span>
+    </label>
+
+    <label style="margin-top: 14px;">Модель (Опционально)
+      <input type="text" name="ai_model" value="{{ ai_model }}" placeholder="Авто (например llama-3.3-70b-versatile или deepseek-chat)">
     </label>
 
     <div class="form-actions" style="margin-top: 24px;">

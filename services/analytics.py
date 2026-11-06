@@ -2,7 +2,7 @@ import json
 from datetime import date, timedelta
 from typing import Optional
 
-from db import get_db, rows_to_dicts
+from db import get_db, rows_to_dicts, get_setting
 from services.constants import (
     ACCURACY_THRESHOLDS,
     ADHERENCE_THRESHOLDS,
@@ -1174,6 +1174,15 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
     api_key = (
         os.environ.get("GROQ_API_KEY", "").strip()
         or os.environ.get("AI_API_KEY", "").strip()
+        or get_setting("ai_api_key", "").strip()
+    )
+    base_url = (
+        os.environ.get("AI_BASE_URL", "").strip()
+        or get_setting("ai_base_url", "").strip()
+    )
+    custom_model = (
+        os.environ.get("AI_MODEL", "").strip()
+        or get_setting("ai_model", "").strip()
     )
 
     data_snapshot = {
@@ -1199,9 +1208,33 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
 
     is_live = False
     llm_text = None
+    error_hint = None
+    active_model_name = "AI"
 
     if api_key:
         import urllib.request
+        import urllib.error
+
+        # Определение эндпоинта и модели
+        if base_url:
+            endpoint = base_url.rstrip("/")
+            if not endpoint.endswith("/chat/completions"):
+                endpoint += "/chat/completions"
+            active_model_name = custom_model or ("deepseek-chat" if "deepseek" in endpoint else "llama-3.3-70b-versatile")
+        elif api_key.startswith("gsk_"):
+            endpoint = "https://api.groq.com/openai/v1/chat/completions"
+            active_model_name = custom_model or "llama-3.3-70b-versatile"
+        elif api_key.startswith("sk-or-"):
+            endpoint = "https://openrouter.ai/api/v1/chat/completions"
+            active_model_name = custom_model or "meta-llama/llama-3.2-3b-instruct:free"
+        elif api_key.startswith("sk-"):
+            # DeepSeek или OpenAI совместимый сервис
+            endpoint = "https://api.deepseek.com/v1/chat/completions"
+            active_model_name = custom_model or "deepseek-chat"
+        else:
+            endpoint = "https://api.groq.com/openai/v1/chat/completions"
+            active_model_name = custom_model or "llama-3.3-70b-versatile"
+
         prompt = (
             "Ты — строгий финансовый аналитик системы AkselMoney. Проанализируй агрегированные показатели:\n"
             f"{json.dumps(data_snapshot, ensure_ascii=False, indent=2)}\n\n"
@@ -1215,9 +1248,18 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
             "Форматируй ответ аккуратным Markdown с маркерами."
         )
 
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+            "User-Agent": "AkselMoney/1.0 (Linux; x86_64)",
+        }
+        if "openrouter" in endpoint:
+            headers["HTTP-Referer"] = "https://akselmoney.local"
+            headers["X-Title"] = "AkselMoney"
+
         try:
             req_data = json.dumps({
-                "model": "qwen/qwen3.8-27b",
+                "model": active_model_name,
                 "messages": [
                     {"role": "system", "content": "Ты персональный финансовый аудитор. Будь объективен, строг и точен."},
                     {"role": "user", "content": prompt},
@@ -1227,16 +1269,32 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
             }).encode("utf-8")
 
             req = urllib.request.Request(
-                "https://api.groq.com/openai/v1/chat/completions",
+                endpoint,
                 data=req_data,
-                headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+                headers=headers,
                 method="POST",
             )
-            with urllib.request.urlopen(req, timeout=12) as response:
+            with urllib.request.urlopen(req, timeout=14) as response:
                 resp_json = json.loads(response.read().decode("utf-8"))
                 llm_text = resp_json["choices"][0]["message"]["content"]
                 is_live = True
-        except Exception:
+        except urllib.error.HTTPError as e:
+            err_body = ""
+            try:
+                err_body = e.read().decode("utf-8")
+            except Exception:
+                pass
+            if e.code == 403:
+                error_hint = "403 Forbidden: Сервис блокирует прямой доступ с IP сервера (типично для Groq из РФ/РБ без прокси). Укажите прокси в Base URL в Настройках или используйте DeepSeek API."
+            elif e.code == 401:
+                error_hint = "401 Unauthorized: Неверный или отозванный API-ключ. Проверьте правильность в Настройках."
+            elif e.code == 404:
+                error_hint = f"404 Not Found: Модель '{active_model_name}' не найдена у провайдера."
+            else:
+                error_hint = f"Ошибка API ({e.code}): {err_body[:100]}"
+            llm_text = None
+        except Exception as e:
+            error_hint = f"Сетевая ошибка обращения к ИИ: {e}"
             llm_text = None
 
     if not llm_text:
@@ -1261,7 +1319,8 @@ def generate_ai_review(ref: Optional[date] = None) -> dict:
     return {
         "text": llm_text,
         "is_ai_live": is_live,
-        "model": "Groq Qwen 3.8-27b" if is_live else "Эвристический аудит",
+        "model": active_model_name if is_live else ("Ошибка API" if error_hint else "Эвристический аудит"),
+        "error_hint": error_hint,
         "insights": insights,
         "metrics": metrics,
     }
