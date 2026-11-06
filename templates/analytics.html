@@ -311,9 +311,14 @@
   </div>
 
   <div class="ai-review-box">
-    <div class="ai-review-label">Сводное заключение аналитика:</div>
+    <div class="ai-review-header-row">
+      <div class="ai-review-label">Сводное заключение аналитика:</div>
+      <span class="badge {% if ai_review.is_ai_live %}badge-ok{% else %}badge-neutral{% endif %}" id="aiReviewBadge">
+        ✨ {{ ai_review.model }}
+      </span>
+    </div>
     <div class="ai-review-content" id="aiReviewText">
-      {{ ai_review.text | replace('\n', '<br>') | safe }}
+      {{ ai_review.text | safe }}
     </div>
   </div>
 </section>

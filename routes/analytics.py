@@ -50,6 +50,7 @@ def refresh_ai():
         return jsonify({
             "success": True,
             "text": rev["text"],
+            "model": rev.get("model", "AI"),
             "is_ai_live": rev["is_ai_live"],
         })
     except Exception as e:

@@ -82,6 +82,7 @@ function initAnalyticsCharts() {
   // 3. AI refresh button listener
   const btnRefresh = document.getElementById('btnRefreshAi');
   const reviewContent = document.getElementById('aiReviewText');
+  const reviewBadge = document.getElementById('aiReviewBadge');
   if (btnRefresh && reviewContent) {
     btnRefresh.addEventListener('click', async () => {
       const originalText = btnRefresh.innerHTML;
@@ -91,7 +92,11 @@ function initAnalyticsCharts() {
         const resp = await fetch('/analytics/refresh-ai', { method: 'POST' });
         const data = await resp.json();
         if (data.success && data.text) {
-          reviewContent.innerHTML = data.text.replace(/\n/g, '<br>');
+          reviewContent.innerHTML = data.text;
+          if (reviewBadge && data.model) {
+            reviewBadge.textContent = '✨ ' + data.model;
+            reviewBadge.className = data.is_ai_live ? 'badge badge-ok' : 'badge badge-neutral';
+          }
         }
       } catch (e) {
         console.error('Error refreshing AI audit:', e);

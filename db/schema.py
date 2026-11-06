@@ -140,6 +140,9 @@ DEFAULT_SETTINGS = (
     ("eur_rate", "3.55"),
     ("savings_in_check", "1"),
     ("default_debt_person", "Кент"),
+    ("ai_api_key", ""),
+    ("ai_model", "qwen/qwen3.8-27b"),
+    ("ai_provider", "groq"),
 )
 
 CURRENCY_COLUMNS = (

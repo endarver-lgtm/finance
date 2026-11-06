@@ -797,8 +797,42 @@ def generate_smart_insights(ref: date | None = None) -> list[dict]:
     return insights[:4]
 
 
+def format_ai_markdown(text: str) -> str:
+    """Преобразует базовую markdown-разметку от LLM в безопасный стилизованный HTML."""
+    import re
+    # Заголовки ### и ##
+    res = re.sub(r'###\s+(.+)', r'<h4 class="ai-heading">\1</h4>', text)
+    res = re.sub(r'##\s+(.+)', r'<h3 class="ai-heading">\1</h3>', res)
+    # Жирный шрифт **text**
+    res = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', res)
+    # Списки
+    lines = res.split('\n')
+    out_lines = []
+    in_list = False
+    for line in lines:
+        stripped = line.strip()
+        if stripped.startswith(('- ', '* ', '• ')):
+            if not in_list:
+                out_lines.append('<ul class="ai-list">')
+                in_list = True
+            content = stripped[2:].strip()
+            out_lines.append(f'<li>{content}</li>')
+        else:
+            if in_list:
+                out_lines.append('</ul>')
+                in_list = False
+            if stripped:
+                out_lines.append(f'<p>{line}</p>')
+            else:
+                out_lines.append('')
+    if in_list:
+        out_lines.append('</ul>')
+    return '\n'.join(out_lines)
+
+
 def generate_ai_review(ref: date | None = None) -> dict:
-    """Генерация комплексного отчета: локальный умный эвристический анализ + опциональный LLM-вызов."""
+    """Генерация комплексного отчета: Groq (Qwen 3.8-27b) или локальный умный эвристический анализ."""
+    import os
     ref = ref or date.today()
     start_m, end_m = period_bounds("month", ref)
 
@@ -808,54 +842,77 @@ def generate_ai_review(ref: date | None = None) -> dict:
     cf = cash_flow_waterfall(start_m, end_m)
     insights = generate_smart_insights(ref)
 
-    api_key = get_setting("ai_api_key", "").strip()
-    ai_provider = get_setting("ai_provider", "openrouter").strip()
+    api_key = (
+        get_setting("ai_api_key", "").strip()
+        or os.environ.get("GROQ_API_KEY", "").strip()
+        or os.environ.get("AI_API_KEY", "").strip()
+    )
+    ai_model = get_setting("ai_model", "").strip() or "qwen/qwen3.8-27b"
+    ai_provider = get_setting("ai_provider", "").strip() or "groq"
 
-    # Сформируем текстовое саммари
     cur_month_name = month_label(start_m)
     pareto_str = ", ".join(shifts["pareto_core"][:3]) or "Не определено"
 
     llm_text = None
+    is_live = False
+
     if api_key:
-        prompt_data = (
-            f"Период: {cur_month_name}. "
-            f"Доходы: {cf['income']:.2f} BYN, Расходы: {cf['expenses']:.2f} BYN, "
-            f"Отложено в копилки: {cf['savings']:.2f} BYN, Свободный остаток: {cf['free_cash']:.2f} BYN. "
-            f"Норма сбережений: {metrics['savings_rate']}%, Запас подушки: {metrics['runway_months']} мес., "
-            f"Дисциплина бюджета: {metrics['adherence_pct']}%. "
-            f"Ключевые категории трат: {pareto_str}. "
-            f"Средний доход за 6 мес: {trends['summary']['avg_income']:.2f} BYN, расход: {trends['summary']['avg_expense']:.2f} BYN."
+        sys_prompt = (
+            "Ты — персональный финансовый консультант в приложении AkselMoney. "
+            "Проанализируй финансовые показатели пользователя за текущий месяц и полугодовую динамику. "
+            "Дай чёткое, ёмкое, структурированное заключение на русском языке (используй emoji, списки и жирный шрифт):\n"
+            "1. 📊 Баланс месяца и кэшфлоу (оценка профицита/дефицита)\n"
+            "2. ⚠️ Главные точки риска или скрытые утечки бюджета\n"
+            "3. 🛡️ Подушка безопасности и темп накоплений\n"
+            "4. 💡 2 конкретных практических шага на ближайшие 2–3 недели."
         )
+
+        prompt_data = (
+            f"Месяц: {cur_month_name}. "
+            f"Доходы факт: {cf['income']:.2f} BYN, Расходы: {cf['expenses']:.2f} BYN, "
+            f"Отложено в копилки: {cf['savings']:.2f} BYN, Свободный остаток: {cf['free_cash']:.2f} BYN. "
+            f"Норма сбережений: {metrics['savings_rate']}%, Запас подушки: {metrics['runway_months']} мес. "
+            f"(средний расход {metrics['avg_monthly_exp']:.2f} BYN/мес). "
+            f"Дисциплина бюджета: {metrics['adherence_pct']}% ({metrics['in_limit_count']} из {metrics['total_envelopes']} в лимите). "
+            f"Ядро расходов (80%): {pareto_str}. "
+            f"Средний доход за 6 мес: {trends['summary']['avg_income']:.2f} BYN, расход: {trends['summary']['avg_expense']:.2f} BYN, "
+            f"сбережения: {trends['summary']['avg_savings']:.2f} BYN."
+        )
+
         try:
-            # Запрос к OpenRouter или Gemini
-            if ai_provider == "openrouter" or "sk-or-" in api_key:
-                req_data = {
-                    "model": "meta-llama/llama-3.2-3b-instruct:free",
-                    "messages": [
-                        {
-                            "role": "system",
-                            "content": "Ты персональный строгий и практичный финансовый консультант. Ответь на русском языке в 3-4 емких пунктах: оцени ситуацию, укажи на главное слабое место и дай 1 конкретный финансовый совет."
-                        },
-                        {"role": "user", "content": prompt_data}
-                    ],
-                    "max_tokens": 400,
-                    "temperature": 0.5,
-                }
-                req = urllib.request.Request(
-                    "https://openrouter.ai/api/v1/chat/completions",
-                    data=json.dumps(req_data).encode("utf-8"),
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                        "HTTP-Referer": "http://146.19.142.116",
-                        "X-Title": "AkselMoney Finance",
-                    },
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=10) as resp:
-                    resp_json = json.loads(resp.read().decode("utf-8"))
-                    llm_text = resp_json["choices"][0]["message"]["content"].strip()
-        except Exception:
+            # Groq API endpoint
+            if api_key.startswith("gsk_") or ai_provider == "groq":
+                endpoint = "https://api.groq.com/openai/v1/chat/completions"
+                model_name = ai_model if "qwen" in ai_model or "llama" in ai_model else "qwen/qwen3.8-27b"
+            else:
+                endpoint = "https://openrouter.ai/api/v1/chat/completions"
+                model_name = ai_model or "meta-llama/llama-3.2-3b-instruct:free"
+
+            req_data = {
+                "model": model_name,
+                "messages": [
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": prompt_data}
+                ],
+                "max_tokens": 700,
+                "temperature": 0.4,
+            }
+            req = urllib.request.Request(
+                endpoint,
+                data=json.dumps(req_data).encode("utf-8"),
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                    "User-Agent": "Mozilla/5.0 AkselMoney/1.0",
+                },
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=12) as resp:
+                resp_json = json.loads(resp.read().decode("utf-8"))
+                llm_raw = resp_json["choices"][0]["message"]["content"].strip()
+                llm_text = format_ai_markdown(llm_raw)
+                is_live = True
+        except Exception as e:
             llm_text = None
 
     if not llm_text:
@@ -876,11 +933,13 @@ def generate_ai_review(ref: date | None = None) -> dict:
         else:
             bullets.append(f"🛡️ **Финансовый резерв**: накопленных средств хватит на {metrics['runway_months']} мес. автономной жизни.")
 
-        llm_text = "\n\n".join(bullets)
+        raw = "\n\n".join(bullets)
+        llm_text = format_ai_markdown(raw)
 
     return {
         "text": llm_text,
-        "is_ai_live": bool(api_key and llm_text and "sk-" in api_key),
+        "is_ai_live": is_live,
+        "model": "Groq Qwen 3.8-27b" if is_live else "Встроенный аналитик",
         "insights": insights,
         "metrics": metrics,
     }
