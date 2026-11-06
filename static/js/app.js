@@ -1,4 +1,33 @@
 (function () {
+  let modalScrollY = 0;
+
+  function lockPageScroll() {
+    if (!document.body.classList.contains('modal-open')) {
+      modalScrollY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+      document.documentElement.classList.add('modal-open');
+      document.body.classList.add('modal-open');
+      document.body.style.position = 'fixed';
+      document.body.style.top = `-${modalScrollY}px`;
+      document.body.style.left = '0';
+      document.body.style.right = '0';
+      document.body.style.width = '100%';
+    }
+  }
+
+  function unlockPageScroll() {
+    if (!document.querySelector('.modal.open')) {
+      document.documentElement.classList.remove('modal-open');
+      document.body.classList.remove('modal-open');
+      const savedY = modalScrollY;
+      document.body.style.position = '';
+      document.body.style.top = '';
+      document.body.style.left = '';
+      document.body.style.right = '';
+      document.body.style.width = '';
+      window.scrollTo(0, savedY);
+    }
+  }
+
   function openModal(id) {
     const el = document.getElementById(id);
     if (el) {
@@ -8,7 +37,7 @@
       }
       el.classList.add('open');
       el.setAttribute('aria-hidden', 'false');
-      document.body.classList.add('modal-open');
+      lockPageScroll();
 
       // Ensure modal container and dialog are at the top of the active viewport
       el.scrollTop = 0;
@@ -20,15 +49,29 @@
   function closeModal(el) {
     el.classList.remove('open');
     el.setAttribute('aria-hidden', 'true');
-    if (!document.querySelector('.modal.open')) {
-      document.body.classList.remove('modal-open');
-    }
+    unlockPageScroll();
   }
 
   function closeAll() {
-    document.querySelectorAll('.modal.open').forEach(closeModal);
-    document.body.classList.remove('modal-open');
+    document.querySelectorAll('.modal.open').forEach((m) => {
+      m.classList.remove('open');
+      m.setAttribute('aria-hidden', 'true');
+    });
+    unlockPageScroll();
   }
+
+  // Prevent background touch scrolling on mobile while modal is open
+  document.addEventListener(
+    'touchmove',
+    (e) => {
+      if (document.body.classList.contains('modal-open')) {
+        if (!e.target.closest('.modal-dialog, .modal-body, .more-nav-list')) {
+          e.preventDefault();
+        }
+      }
+    },
+    { passive: false }
+  );
 
   document.addEventListener('click', (e) => {
     const openBtn = e.target.closest('[data-open]');

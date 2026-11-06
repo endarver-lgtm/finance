@@ -659,6 +659,25 @@ button, input, select, textarea {
   gap: 16px;
 }
 
+.goal-section {
+  margin-bottom: 28px;
+}
+
+.goal-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.goal-section-head h2 {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
 .goal-card {
   min-height: 240px;
   padding: 22px;
@@ -1504,9 +1523,11 @@ input:focus, select:focus, textarea:focus {
 /* --------------------------------------------------------------------------
    Modals & Dialogs
    -------------------------------------------------------------------------- */
+html.modal-open,
 body.modal-open {
   overflow: hidden !important;
-  touch-action: none;
+  height: 100% !important;
+  overscroll-behavior: none !important;
 }
 
 .modal {
@@ -1544,6 +1565,7 @@ body.modal-open {
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
   z-index: 1;
+  touch-action: none;
 }
 
 .modal-dialog {
