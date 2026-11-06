@@ -193,9 +193,20 @@
     },
     doughnut(ctx, labels, values, colors) {
       const defaultColors = [
-        '#1b5e3f', '#2a8555', '#4aa374', '#79c29c', '#a8dfc2',
-        '#d4a373', '#e07a5f', '#3d5a80', '#98c1d9', '#6c757d'
+        '#2563eb', // Blue
+        '#10b981', // Emerald
+        '#f59e0b', // Amber
+        '#8b5cf6', // Violet
+        '#ef4444', // Red
+        '#06b6d4', // Cyan
+        '#ec4899', // Pink
+        '#f97316', // Orange
+        '#6366f1', // Indigo
+        '#14b8a6', // Teal
+        '#84cc16', // Lime
+        '#64748b'  // Slate
       ];
+      window.PARETO_COLORS = defaultColors;
       const total = values.reduce((a, b) => a + b, 0);
       return new Chart(ctx, {
         type: 'doughnut',
@@ -211,17 +222,11 @@
         },
         options: {
           responsive: true,
-          cutout: '68%',
+          maintainAspectRatio: false,
+          cutout: '66%',
           plugins: {
             legend: {
-              position: 'bottom',
-              labels: {
-                boxWidth: 10,
-                boxHeight: 10,
-                padding: 12,
-                font: { size: 11.5 },
-                usePointStyle: true,
-              },
+              display: false,
             },
             tooltip: {
               backgroundColor: '#1f1b16',

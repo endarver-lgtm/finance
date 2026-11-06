@@ -69,7 +69,19 @@ function initAnalyticsCharts() {
     if (nonZeroIndices.length > 0) {
       const activeLabels = nonZeroIndices.map((i) => p.labels[i]);
       const activeValues = nonZeroIndices.map((i) => p.values[i]);
-      paretoChart = window.financeCharts.doughnut(paretoEl, activeLabels, activeValues);
+      const palette = window.PARETO_COLORS || [
+        '#2563eb', '#10b981', '#f59e0b', '#8b5cf6', '#ef4444',
+        '#06b6d4', '#ec4899', '#f97316', '#6366f1', '#14b8a6',
+        '#84cc16', '#64748b'
+      ];
+      const activeColors = nonZeroIndices.map((_, idx) => palette[idx % palette.length]);
+
+      paretoChart = window.financeCharts.doughnut(paretoEl, activeLabels, activeValues, activeColors);
+
+      // Colorize the dots in the legend list
+      document.querySelectorAll('.donut-legend-dot').forEach((dot, idx) => {
+        dot.style.backgroundColor = palette[idx % palette.length];
+      });
     } else {
       const emptyNote = document.createElement('div');
       emptyNote.className = 'chart-empty-note';

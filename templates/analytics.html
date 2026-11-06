@@ -9,8 +9,8 @@
     <h1>Финансовая аналитика</h1>
     <p class="muted">Комплексный аудит здоровья, тренды за 6 месяцев и прогноз целей</p>
   </div>
-  <div class="period-badge-chip">
-    <span>{{ period_caption }}</span>
+  <div class="header-actions">
+    <span class="period-badge-chip">{{ period_caption }}</span>
   </div>
 </header>
 
@@ -28,7 +28,7 @@
       {{ health.savings_rate }}%
     </div>
     <div class="kpi-sub">
-      <span>Доля дохода, направляемая в капитал и копилки</span>
+      <span>Доля дохода, направляемая в копилки</span>
     </div>
   </article>
 
@@ -44,7 +44,7 @@
       {{ health.runway_months }} <span class="kpi-val-unit">мес.</span>
     </div>
     <div class="kpi-sub">
-      <span>При средних тратах {{ money(health.avg_monthly_exp, 'BYN', false, false) }}/мес.</span>
+      <span>При средних тратах {{ money(health.avg_monthly_exp, 'BYN', false, false) }}/мес</span>
     </div>
   </article>
 
@@ -58,7 +58,7 @@
     </div>
     <div class="kpi-value">{{ health.adherence_pct }}%</div>
     <div class="kpi-sub">
-      <span>Категорий расходов удерживаются в рамках лимита</span>
+      <span>Конвертов удерживаются в рамках лимита</span>
     </div>
   </article>
 
@@ -80,33 +80,32 @@
   <div class="section-head">
     <div>
       <h2>Движение средств за месяц (Cash Flow)</h2>
-      <p class="section-desc">Как входящие доходы распределяются по расходам, сбережениям и свободному остатку</p>
+      <p class="section-desc">Распределение приходов по расходам, копилкам и остатку</p>
     </div>
     <span class="kpi-badge {% if waterfall.free_cash >= 0 %}kpi-badge--accent{% else %}kpi-badge--danger{% endif %}">
       Остаток: {{ money(waterfall.free_cash) }}
     </span>
   </div>
-  <div class="waterfall-flow">
-    {% for step in waterfall.steps %}
-    <div class="waterfall-step waterfall-step--{{ step.type }}">
-      <div class="waterfall-step-top">
-        <span class="waterfall-step-label">{{ step.label }}</span>
-        <span class="waterfall-step-amt">
-          {% if step.type == 'positive' and step.amount > 0 %}+{% endif %}{{ money(step.amount) }}
-        </span>
+  <div class="waterfall-scroll-container">
+    <div class="waterfall-flow">
+      {% for step in waterfall.steps %}
+      <div class="waterfall-step waterfall-step--{{ step.type }}">
+        <div class="waterfall-step-top">
+          <span class="waterfall-step-label">{{ step.label }}</span>
+          <span class="waterfall-step-amt">
+            {% if step.type == 'positive' and step.amount > 0 %}+{% endif %}{{ money(step.amount) }}
+          </span>
+        </div>
+        <div class="waterfall-step-desc">{{ step.desc }}</div>
       </div>
-      <div class="waterfall-step-desc">{{ step.desc }}</div>
+      {% endfor %}
     </div>
-    {% if not loop.last %}
-    <div class="waterfall-arrow">→</div>
-    {% endif %}
-    {% endfor %}
   </div>
 </section>
 
 <!-- Секция: Тренды 6 месяцев -->
 <section class="card chart-card-wide">
-  <div class="section-head">
+  <div class="section-head section-head--stackable">
     <div>
       <h2>Динамика финансов за 6 месяцев</h2>
       <p class="section-desc">Соотношение доходов, расходов и накопленного капитала</p>
@@ -130,11 +129,11 @@
       <strong class="stat-ribbon-val">{{ money(trends.summary.avg_expense, 'BYN', false, false) }}</strong>
     </div>
     <div class="stat-ribbon-item">
-      <span class="stat-ribbon-label">Сбережения/мес.</span>
+      <span class="stat-ribbon-label">Сбережения/мес</span>
       <strong class="stat-ribbon-val">{{ money(trends.summary.avg_savings, 'BYN', false, false) }}</strong>
     </div>
     <div class="stat-ribbon-item">
-      <span class="stat-ribbon-label">Суммарный свободный кэш</span>
+      <span class="stat-ribbon-label">Свободный остаток (6 мес)</span>
       <strong class="stat-ribbon-val {% if trends.summary.total_free >= 0 %}text-accent{% else %}text-danger{% endif %}">
         {{ money(trends.summary.total_free) }}
       </strong>
@@ -144,7 +143,7 @@
 
 <!-- Секция: Структура расходов (Парето) и Сдвиги категорий -->
 <section class="two-col">
-  <!-- Структура трат (Парето) -->
+  <!-- Структура трат (Парето) с четким разделением цветов -->
   <article class="card">
     <div class="section-head">
       <div>
@@ -152,14 +151,33 @@
         <p class="section-desc">Доли категорий в расходах текущего месяца</p>
       </div>
     </div>
-    <div class="chart-box chart-box--donut">
-      <canvas id="paretoChart"></canvas>
+    <div class="donut-container">
+      <div class="chart-box chart-box--donut">
+        <canvas id="paretoChart"></canvas>
+      </div>
+      <!-- Четкая цветовая раскладка категорий -->
+      <div class="donut-legend-list">
+        {% for c in shifts.categories %}
+        {% if c.spent_current > 0 %}
+        <div class="donut-legend-row">
+          <div class="donut-legend-info">
+            <span class="donut-legend-dot"></span>
+            <span class="donut-legend-name">{{ c.name }}</span>
+          </div>
+          <div class="donut-legend-values">
+            <span class="donut-legend-pct">{{ c.share }}%</span>
+            <span class="donut-legend-amt">{{ money(c.spent_current, 'BYN', false, false) }}</span>
+          </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
     </div>
     {% if shifts.pareto_core %}
     <div class="pareto-insight">
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
       <span>
-        <strong>Ядро расходов:</strong> категории <em>{{ shifts.pareto_core|join(', ') }}</em> формируют ~80% ваших трат. Оптимизация именно этих статей даст наибольший эффект.
+        <strong>Ядро расходов:</strong> <em>{{ shifts.pareto_core|join(', ') }}</em> формируют ~80% ваших трат.
       </span>
     </div>
     {% endif %}
@@ -243,28 +261,28 @@
         </div>
         <span class="badge {% if g.pct >= 100 %}badge-ok{% elif g.deadline_status == 'behind' %}badge-danger{% elif g.deadline_status == 'on_track' %}badge-ok{% else %}badge-neutral{% endif %}">
           {% if g.pct >= 100 %}
-          Цель достигнута!
+          Достигнуто!
           {% elif g.deadline_status == 'on_track' %}
           В графике
           {% elif g.deadline_status == 'behind' %}
-          Отстаёт от дедлайна
+          Отстаёт
           {% else %}
           {{ g.pct }}%
           {% endif %}
         </span>
       </div>
 
-      <div class="progress-track" style="margin: 14px 0 10px 0;">
+      <div class="progress-track" style="margin: 12px 0 8px 0;">
         <div class="progress-fill {% if g.pct >= 100 %}progress-fill--ok{% elif g.deadline_status == 'behind' %}progress-fill--danger{% else %}progress-fill--accent{% endif %}" style="width: {{ [g.pct, 100]|min }}%"></div>
       </div>
 
       <div class="goal-forecast-meta">
         <div>
           <span class="muted">Темп:</span>
-          <strong>~{{ money(g.monthly_pace, 'BYN', false, false) }}/мес.</strong>
+          <strong>~{{ money(g.monthly_pace, 'BYN', false, false) }}/мес</strong>
         </div>
         <div>
-          <span class="muted">Ориентир финиша (ETA):</span>
+          <span class="muted">Ориентир (ETA):</span>
           <strong class="{% if g.deadline_status == 'behind' %}text-danger{% else %}text-accent{% endif %}">
             {{ g.eta_date or '—' }}
           </strong>
@@ -280,14 +298,14 @@
 
 <!-- Секция: Умные инсайты и ИИ-Аналитик -->
 <section class="card ai-card">
-  <div class="section-head">
+  <div class="section-head ai-section-head">
     <div class="ai-head-brand">
       <div class="ai-sparkle-icon">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"/></svg>
       </div>
-      <div>
-        <h2>Финансовый ассистент и инсайты</h2>
-        <p class="section-desc">Автоматический аудит узких мест и персональные рекомендации</p>
+      <div class="ai-head-text">
+        <h2>Финансовый ассистент</h2>
+        <p class="section-desc">Умные инсайты и персональный аудит</p>
       </div>
     </div>
     <button type="button" class="btn btn-secondary btn-sm" id="btnRefreshAi">
@@ -340,5 +358,5 @@ window.analyticsData = {
   }
 };
 </script>
-<script src="{{ url_for('static', filename='js/analytics.js') }}" defer></script>
+<script src="{{ url_for('static', filename='js/analytics.js') }}?v=2" defer></script>
 {% endblock %}
