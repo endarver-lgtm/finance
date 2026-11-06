@@ -590,7 +590,7 @@ button, input, select, textarea {
 
 .progress-track {
   height: 6px;
-  background-color: var(--surface-raised);
+  background-color: rgba(31, 27, 22, 0.08);
   border-radius: 3px;
   overflow: hidden;
   position: relative;
@@ -599,12 +599,15 @@ button, input, select, textarea {
 .progress-fill {
   height: 100%;
   border-radius: 3px;
+  background-color: var(--accent);
   transition: width var(--duration-normal) var(--ease);
 }
 
+.progress-fill--accent,
 .progress-fill--ok { background-color: var(--accent); }
 .progress-fill--warning { background-color: var(--warning); }
 .progress-fill--danger { background-color: var(--danger); }
+.progress-fill--neutral { background-color: var(--text-muted); opacity: 0.5; }
 
 .upcoming-item {
   display: flex;

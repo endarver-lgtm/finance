@@ -197,12 +197,12 @@
 
 <!-- Секция: Структура расходов (Парето) и Сдвиги категорий -->
 <section class="two-col">
-  <!-- Структура трат (Парето C5) с горизонтальными барами -->
+  <!-- Структура трат (Парето) с кольцевой диаграммой-бубликом -->
   <article class="card">
     <div class="section-head">
       <div>
         <h2>Структура трат (Парето)</h2>
-        <p class="section-desc">Доли переменных категорий в расходах текущего месяца</p>
+        <p class="section-desc">Доли категорий в расходах текущего месяца</p>
       </div>
     </div>
 
@@ -213,13 +213,18 @@
     {% endif %}
 
     {% if shifts.categories and shifts.total_current > 0 %}
-    <div class="pareto-bars-list">
-      {% for c in shifts.categories %}
-      {% if c.spent_current > 0 %}
-      <div class="pareto-bar-item" style="margin-bottom: 12px;">
-        <div class="pareto-bar-head" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; font-size: 13px;">
-          <div style="display: flex; align-items: center; gap: 6px;">
-            <strong style="font-weight: 500;">{{ c.name }}</strong>
+    <div class="donut-container">
+      <div class="chart-box chart-box--donut">
+        <canvas id="paretoChart"></canvas>
+      </div>
+      <!-- Четкая цветовая раскладка категорий -->
+      <div class="donut-legend-list">
+        {% for c in shifts.categories %}
+        {% if c.spent_current > 0 %}
+        <div class="donut-legend-row">
+          <div class="donut-legend-info">
+            <span class="donut-legend-dot"></span>
+            <span class="donut-legend-name">{{ c.name }}</span>
             {% if c.is_core %}
             <span class="badge badge-ok" style="font-size: 10px; padding: 1px 6px;">Ядро</span>
             {% endif %}
@@ -227,17 +232,14 @@
             <span title="Траты из копилок" style="cursor: help;">🎯</span>
             {% endif %}
           </div>
-          <div style="text-align: right;">
-            <strong>{{ money(c.spent_current, 'BYN', false, false) }}</strong>
-            <span class="muted" style="font-size: 11.5px; margin-left: 4px;">{{ c.share }}% · накопл: {{ c.cum_pct }}%</span>
+          <div class="donut-legend-values">
+            <span class="donut-legend-pct">{{ c.share }}%</span>
+            <span class="donut-legend-amt">{{ money(c.spent_current, 'BYN', false, false) }}</span>
           </div>
         </div>
-        <div class="progress-track" style="height: 6px; background: var(--surface-raised); border-radius: 3px; overflow: hidden;">
-          <div class="progress-fill {% if c.is_core %}progress-fill--accent{% else %}progress-fill--neutral{% endif %}" style="width: {{ c.share }}%; height: 100%; border-radius: 3px; {% if not c.is_core %}background-color: var(--text-muted); opacity: 0.5;{% endif %}"></div>
-        </div>
+        {% endif %}
+        {% endfor %}
       </div>
-      {% endif %}
-      {% endfor %}
     </div>
     {% else %}
     {{ empty_state('Нет расходов', 'В этом месяце еще не было зарегистрировано расходов') }}
@@ -345,8 +347,8 @@
         </span>
       </div>
 
-      <div class="progress-track" style="margin: 12px 0 8px 0;">
-        <div class="progress-fill {% if g.pct >= 100 %}progress-fill--ok{% elif g.deadline_status == 'behind' %}progress-fill--danger{% else %}progress-fill--accent{% endif %}" style="width: {{ [g.pct, 100]|min }}%"></div>
+      <div class="progress-track" style="height: 6px; margin: 12px 0 8px 0; background: rgba(31, 27, 22, 0.08); border-radius: 3px; overflow: hidden;">
+        <div class="progress-fill {% if g.pct >= 100 %}progress-fill--ok{% elif g.deadline_status == 'behind' %}progress-fill--danger{% else %}progress-fill--accent{% endif %}" style="width: {{ [g.pct, 100]|min }}%; height: 100%; border-radius: 3px; background-color: {% if g.pct >= 100 %}var(--accent){% elif g.deadline_status == 'behind' %}var(--danger){% else %}var(--accent){% endif %};"></div>
       </div>
 
       <div class="goal-forecast-meta">
