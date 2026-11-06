@@ -162,7 +162,10 @@
   <article class="card">
     <div class="section-head">
       <h2>Конверты (неделя)</h2>
-      <a href="{{ url_for('budget.index') }}" class="btn btn-secondary btn-sm">В бюджет →</a>
+      <a href="{{ url_for('budget.index') }}" class="section-link">
+        <span>В бюджет</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
     </div>
     {% if envelopes %}
     <ul class="envelope-list">
@@ -194,7 +197,10 @@
   <article class="card">
     <div class="section-head">
       <h2>Ожидаемые поступления</h2>
-      <a href="{{ url_for('income.index') }}" class="btn btn-secondary btn-sm">В приходы →</a>
+      <a href="{{ url_for('income.index') }}" class="section-link">
+        <span>В приходы</span>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
     </div>
     {% if upcoming %}
     <ul class="upcoming-list">

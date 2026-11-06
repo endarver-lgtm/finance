@@ -245,7 +245,10 @@
       <h2>Прогноз целей накоплений</h2>
       <p class="section-desc">Оценка темпа и ожидаемых сроков закрытия целей</p>
     </div>
-    <a href="{{ url_for('savings.index') }}" class="btn btn-secondary btn-sm section-head-action">В копилки →</a>
+    <a href="{{ url_for('savings.index') }}" class="section-link">
+      <span>В копилки</span>
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </a>
   </div>
 
   {% if goals %}
