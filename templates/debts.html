@@ -1,21 +1,21 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import money, currency_select, empty_state with context %}
 
-{% block title %}Долги — Финансы{% endblock %}
+{% block title %}Долги — AkselMoney{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
     <h1>Долги</h1>
-    <p class="muted" style="margin-top: 0.25rem;">Взаиморасчёты с людьми и возвраты долгов</p>
+    <p class="muted">Взаиморасчёты с людьми и возвраты долгов</p>
   </div>
   <div class="header-actions">
-    <button type="button" class="btn btn-secondary" data-open="modal-manual-debt">+ Новая запись</button>
+    <button type="button" class="btn btn-secondary" data-open="modal-manual-debt">Новая запись</button>
   </div>
 </header>
 
 {% if persons|length > 1 %}
-<div class="period-switcher" style="margin-bottom: 1.25rem;">
+<div class="period-switcher" style="margin-bottom: 20px;">
   {% for p in persons %}
   <a href="{{ url_for('debts.index', person=p) }}" class="period-btn {% if p == active_person %}active{% endif %}">
     {{ p }}
@@ -24,33 +24,31 @@
 </div>
 {% endif %}
 
-<section class="card" style="margin-bottom: 1.5rem; text-align: center; padding: 2rem 1.5rem; border-top: 4px solid {% if person_balance > 0 %}var(--accent){% elif person_balance < 0 %}var(--danger){% else %}var(--border){% endif %};">
-  <span class="kpi-label" style="font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; display: block;">
+<section class="card debt-hero-card">
+  <span class="stat-label">
     Баланс расчётов с {{ active_person }}
   </span>
-  <div style="font-size: 2.25rem; font-weight: 800; line-height: 1.2; margin-bottom: 0.5rem;" class="{% if person_balance > 0 %}text-accent{% elif person_balance < 0 %}text-danger{% else %}muted{% endif %}">
+  <div class="debt-hero-value {% if person_balance > 0 %}text-accent{% elif person_balance < 0 %}text-danger{% else %}muted{% endif %}">
     {% if person_balance > 0 %}
-      {{ active_person }} должен тебе {{ money(person_balance, 'BYN', false, true) }}
+      {{ active_person }} должен вам {{ money(person_balance, 'BYN', false, true) }}
     {% elif person_balance < 0 %}
-      Ты должен {{ active_person }} {{ money(person_balance|abs, 'BYN', false, true) }}
+      Вы должны {{ active_person }} {{ money(person_balance|abs, 'BYN', false, true) }}
     {% else %}
       Расчёт закрыт (0.00 BYN)
     {% endif %}
   </div>
   {% if persons|length > 1 and total_balance != person_balance %}
-  <p class="muted" style="font-size: 0.85rem; margin-bottom: 1.25rem;">
+  <p class="muted font-sm" style="margin-bottom: 16px;">
     Общий баланс по всем людям: <strong>{{ money(total_balance) }}</strong>
   </p>
-  {% else %}
-  <div style="height: 0.75rem;"></div>
   {% endif %}
 
-  <div style="display: flex; gap: 0.75rem; justify-content: center; flex-wrap: wrap; margin-top: 0.5rem;">
+  <div class="debt-hero-actions">
     <button type="button" class="btn btn-primary" data-open="modal-repay-from">
-      <span>↓</span> Он вернул мне
+      Он вернул мне
     </button>
     <button type="button" class="btn btn-secondary" data-open="modal-repay-to">
-      <span>↑</span> Я вернул ему
+      Я вернул ему
     </button>
   </div>
 </section>
@@ -65,13 +63,13 @@
         <th>Суть операции</th>
         <th style="text-align: right; width: 170px;">Сумма</th>
         <th>Комментарий</th>
-        <th style="width: 50px;"></th>
+        <th style="width: 70px; text-align: center;">Действия</th>
       </tr>
     </thead>
     <tbody>
       {% for d in debts %}
       <tr>
-        <td style="font-family: var(--font-mono); font-size: 0.825rem; color: var(--muted);">{{ d.date | db_date }}</td>
+        <td class="cell-date">{{ d.date | db_date }}</td>
         <td><strong>{{ d.person }}</strong></td>
         <td>
           <span class="badge {% if d.kind in ('i_paid', 'repay_to_him') %}badge-ok{% else %}badge-pending{% endif %}">
@@ -82,7 +80,7 @@
             {% else %}{{ d.kind }}{% endif %}
           </span>
           {% if d.category_name %}
-          <span class="muted" style="font-size: 0.8rem; margin-left: 0.35rem;">({{ d.category_name }})</span>
+          <span class="muted font-sm" style="margin-left: 6px;">({{ d.category_name }})</span>
           {% endif %}
         </td>
         <td style="text-align: right;" class="{% if d.kind in ('i_paid', 'repay_to_him') %}text-accent{% else %}text-danger{% endif %}">
@@ -93,26 +91,69 @@
         </td>
         <td class="muted">{{ d.comment or '—' }}</td>
         <td style="text-align: center;">
-          <form method="post" action="{{ url_for('debts.delete_entry_route', debt_id=d.id) }}" onsubmit="return confirm('Удалить эту запись? Если был связанный расход, он также удалится.');" style="margin: 0;">
-            <button type="submit" title="Удалить" style="background: none; border: none; cursor: pointer; color: var(--muted); font-size: 1rem;">✕</button>
-          </form>
+          <div class="item-actions" style="justify-content: center;">
+            <button type="button" class="btn-icon-subtle" data-open="modal-edit-debt-{{ d.id }}" title="Редактировать запись">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            <form method="post" action="{{ url_for('debts.delete_entry_route', debt_id=d.id) }}" onsubmit="return confirm('Удалить эту запись? Если был связанный расход, он также удалится.');">
+              <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </form>
+          </div>
         </td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+{% for d in debts %}
+<!-- Модальное окно: Редактировать запись долга -->
+<div class="modal" id="modal-edit-debt-{{ d.id }}" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-dialog">
+    <div class="modal-header">
+      <h3 class="modal-title">Редактировать запись долга</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
+    </div>
+    <form method="post" action="{{ url_for('debts.edit_entry', debt_id=d.id) }}">
+      <label>Тип записи
+        <select name="kind">
+          <option value="i_paid" {% if d.kind == 'i_paid' %}selected{% endif %}>Я заплатил за него</option>
+          <option value="he_paid" {% if d.kind == 'he_paid' %}selected{% endif %}>Он заплатил за меня</option>
+          <option value="repay_from_him" {% if d.kind == 'repay_from_him' %}selected{% endif %}>Он вернул мне деньги</option>
+          <option value="repay_to_him" {% if d.kind == 'repay_to_him' %}selected{% endif %}>Я вернул ему деньги</option>
+        </select>
+      </label>
+      <label>Человек <input type="text" name="person" value="{{ d.person }}" required></label>
+      <label>Сумма <input type="number" name="amount" step="0.01" value="{{ "%.2f"|format(d.amount|float) }}" required></label>
+      {{ currency_select('currency', d.currency) }}
+      <label>Дата <input type="date" name="date" value="{{ d.date }}" required></label>
+      <label>Комментарий <input type="text" name="comment" value="{{ d.comment or '' }}" placeholder="Детали"></label>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+        <button type="submit" class="btn btn-primary">Сохранить</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endfor %}
 {% else %}
-{{ empty_state('Нет записей долгов', 'Разделите чек в бюджете или добавьте возврат долга') }}
+{{ empty_state('Нет записей долгов', 'Добавьте запись долга или возврат денег', 'Новая запись', 'modal-manual-debt') }}
 {% endif %}
 
 <!-- Модальное окно: Он вернул мне -->
 <div class="modal" id="modal-repay-from" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-      <h3 style="margin-bottom: 0;">Возврат долга — Он вернул мне</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Возврат долга — Он вернул мне</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <form method="post" action="{{ url_for('debts.add_entry') }}">
       <input type="hidden" name="kind" value="repay_from_him">
@@ -133,9 +174,11 @@
 <div class="modal" id="modal-repay-to" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-      <h3 style="margin-bottom: 0;">Возврат долга — Я вернул ему</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Возврат долга — Я вернул ему</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <form method="post" action="{{ url_for('debts.add_entry') }}">
       <input type="hidden" name="kind" value="repay_to_him">
@@ -156,9 +199,11 @@
 <div class="modal" id="modal-manual-debt" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-      <h3 style="margin-bottom: 0;">Новая запись долга</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Новая запись долга</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <form method="post" action="{{ url_for('debts.add_entry') }}">
       <label>Тип записи

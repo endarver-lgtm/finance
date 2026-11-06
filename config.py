@@ -24,6 +24,7 @@ DATABASE_PATH = os.environ.get(
     "DATABASE_PATH", os.path.join(BASE_DIR, "finance.db")
 )
 SECRET_KEY = os.environ.get("SECRET_KEY", "dev-change-me-in-production")
+APP_PIN = os.environ.get("APP_PIN", "9002")
 DEFAULT_CURRENCY = os.environ.get("DEFAULT_CURRENCY", "BYN")
 DEFAULT_USD_RATE = os.environ.get("USD_RATE", "3.27")
 DEFAULT_EUR_RATE = os.environ.get("EUR_RATE", "3.55")

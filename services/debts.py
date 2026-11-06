@@ -202,6 +202,35 @@ def delete_debt(debt_id: int) -> bool:
     return True
 
 
+def update_debt(debt_id: int, person: str, kind: str, amount: float, currency: str, entry_date: str, comment: str):
+    """Обновление записи долга (и связанного расхода, если есть)."""
+    amount = round(float(amount), 2)
+    if amount <= 0:
+        raise ValueError("Сумма должна быть больше нуля")
+    currency = normalize_currency(currency)
+    with get_db() as conn:
+        debt = conn.execute("SELECT budget_entry_id FROM debts WHERE id = ?", (debt_id,)).fetchone()
+        if not debt:
+            raise ValueError("Запись долга не найдена")
+        conn.execute(
+            """
+            UPDATE debts
+            SET person = ?, kind = ?, amount = ?, currency = ?, date = ?, comment = ?
+            WHERE id = ?
+            """,
+            (person.strip(), kind, amount, currency, entry_date, comment, debt_id),
+        )
+        if debt["budget_entry_id"]:
+            conn.execute(
+                """
+                UPDATE budget_entries
+                SET amount = ?, currency = ?, date = ?, comment = ?
+                WHERE id = ?
+                """,
+                (amount, currency, entry_date, comment, debt["budget_entry_id"]),
+            )
+
+
 def list_debts(person: str | None = None) -> list[dict]:
     """Список записей долгов."""
     sql = """

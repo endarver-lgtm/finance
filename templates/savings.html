@@ -1,15 +1,15 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import money, currency_select, empty_state with context %}
 
-{% block title %}Накопления — Финансы{% endblock %}
+{% block title %}Накопления — AkselMoney{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
     <h1>Накопления</h1>
-    <p class="muted" style="margin-top: 0.25rem;">Финансовая подушка, цели и крупные покупки</p>
+    <p class="muted">Финансовая подушка, цели и крупные покупки</p>
   </div>
-  <button type="button" class="btn btn-primary" data-open="modal-add-goal">+ Новая цель</button>
+  <button type="button" class="btn btn-primary" data-open="modal-add-goal">Новая цель</button>
 </header>
 
 {% set has_goals = grouped.values() | map('length') | sum > 0 %}
@@ -18,22 +18,34 @@
 {% for type_key, group_title in type_groups.items() %}
 {% if grouped[type_key] %}
 <section class="goal-section">
-  <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-    <h2 style="margin-bottom: 0;">{{ group_title }}</h2>
+  <div class="goal-section-head">
+    <h2>{{ group_title }}</h2>
     <span class="badge badge-muted">{{ grouped[type_key] | length }}</span>
   </div>
-  <div class="cards-grid">
+  <div class="cards-grid cards-grid--goals">
     {% for g in grouped[type_key] %}
     <article class="card goal-card">
-      <div>
+      <div class="goal-card-content">
         <div class="card-top">
-          <h3>{{ g.name }}</h3>
+          <div class="card-top-title">
+            <h3>{{ g.name }}</h3>
+            <div class="item-actions">
+              <button type="button" class="btn-icon-subtle" data-open="modal-edit-goal-{{ g.id }}" title="Редактировать цель">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+              </button>
+              <form method="post" action="{{ url_for('savings.delete_goal', goal_id=g.id) }}" onsubmit="return confirm('Удалить цель «{{ g.name }}» и все её операции?');">
+                <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить цель">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                </button>
+              </form>
+            </div>
+          </div>
           <span class="badge {% if g.pct >= 100 %}badge-ok{% else %}badge-pending{% endif %}">
-            {% if g.pct >= 100 %}✓ Достигнута{% else %}{{ g.pct }}%{% endif %}
+            {{ 'Достигнута' if g.pct >= 100 else (g.pct ~ '%') }}
           </span>
         </div>
         {% if g.deadline %}
-        <p class="muted" style="font-size: 0.8rem; margin-bottom: 0.5rem;">Дедлайн: <strong>{{ g.deadline | db_date }}</strong></p>
+        <p class="muted font-sm" style="margin-bottom: 8px;">Дедлайн: <strong>{{ g.deadline | db_date }}</strong></p>
         {% endif %}
 
         <div class="goal-stats">
@@ -52,57 +64,119 @@
         </div>
 
         <div class="progress-track">
-          <div class="progress-fill ok" style="width: {{ g.pct }}%"></div>
+          <div class="progress-fill progress-fill--ok" style="width: {{ [g.pct, 100]|min }}%"></div>
         </div>
-        <p class="pct-label">{{ g.pct }}% завершено</p>
+        <p class="pct-label">{{ g.pct }}% накоплено</p>
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 1rem;">
+      <div class="goal-actions">
         <button type="button" class="btn btn-primary" data-open="modal-deposit-{{ g.id }}">
-          <span>+</span> Пополнить
+          Пополнить
         </button>
         <button type="button" class="btn btn-secondary" data-open="modal-withdraw-{{ g.id }}">
-          <span>−</span> Снять
+          Снять
         </button>
       </div>
 
       {% if g.history %}
       <details class="history-details">
-        <summary>История операций ({{ g.history | length }})</summary>
+        <summary class="history-summary">История операций ({{ g.history | length }})</summary>
         <ul class="history-list">
           {% for h in g.history %}
-          <li style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.35rem 0; border-bottom: 1px solid var(--border-light, #f1f5f9);">
-            <div style="display: flex; align-items: center; gap: 0.4rem; flex: 1; min-width: 0; flex-wrap: wrap;">
-              <span class="h-date">{{ h.date | db_date }}</span>
-              <span class="badge {% if h.kind == 'deposit' %}badge-ok{% else %}badge-danger{% endif %}" style="font-size: 0.72rem; padding: 0.15rem 0.4rem;">
+          <li class="history-row">
+            <div class="history-row-left">
+              <span class="history-date">{{ h.date | db_date }}</span>
+              <span class="badge {% if h.kind == 'deposit' %}badge-ok{% else %}badge-danger{% endif %}">
                 {% if h.kind == 'deposit' %}+ Взнос
                 {% elif h.kind == 'withdraw_spent' %}− Трата ({{ h.category_name or 'Категория' }})
                 {% elif h.kind == 'withdraw_free' %}− В свободные
                 {% else %}+ Взнос{% endif %}
               </span>
-              {% if h.comment %}<span class="h-comment muted" style="font-size: 0.75rem;" title="{{ h.comment }}">{{ h.comment }}</span>{% endif %}
+              {% if h.comment %}<span class="history-comment muted" title="{{ h.comment }}">{{ h.comment }}</span>{% endif %}
             </div>
-            <div style="display: flex; align-items: center; gap: 0.4rem;">
-              <span class="h-sum {% if h.kind != 'deposit' %}text-danger{% endif %}" style="font-size: 0.85rem; font-weight: 600;">
-                {% if h.kind != 'deposit' %}−{% else %}+{% endif %}{{ money(h.amount, h.currency|default('BYN'), false, false) }}
+            <div class="history-row-right">
+              <span class="h-sum {% if h.kind != 'deposit' %}text-danger{% endif %}">
+                {{ money(h.amount, h.currency|default('BYN'), false, false) }}
               </span>
-              <form method="post" action="{{ url_for('savings.delete_entry_route', entry_id=h.id) }}" onsubmit="return confirm('Удалить эту запись?');" style="margin: 0;">
-                <button type="submit" title="Удалить" style="background: none; border: none; cursor: pointer; color: var(--muted); font-size: 0.9rem; padding: 0 0.25rem;">✕</button>
-              </form>
+              <div class="item-actions">
+                <button type="button" class="btn-icon-subtle" data-open="modal-edit-savings-entry-{{ h.id }}" title="Редактировать запись">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
+                <form method="post" action="{{ url_for('savings.delete_entry_route', entry_id=h.id) }}" onsubmit="return confirm('Удалить эту запись?');">
+                  <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  </button>
+                </form>
+              </div>
             </div>
           </li>
+
+          <!-- Модальное окно: Редактирование операции накопления -->
+          <div class="modal" id="modal-edit-savings-entry-{{ h.id }}" aria-hidden="true">
+            <div class="modal-backdrop" data-close></div>
+            <div class="modal-dialog">
+              <div class="modal-header">
+                <h3 class="modal-title">Редактировать запись</h3>
+                <button type="button" class="btn-close" data-close aria-label="Закрыть">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              <form method="post" action="{{ url_for('savings.edit_entry', entry_id=h.id) }}">
+                <label>Сумма <input type="number" name="amount" step="0.01" value="{{ "%.2f"|format(h.amount|float) }}" required></label>
+                {{ currency_select('currency', h.currency|default('BYN')) }}
+                <label>Дата <input type="date" name="date" value="{{ h.date }}" required></label>
+                <label>Комментарий <input type="text" name="comment" value="{{ h.comment or '' }}" placeholder="Комментарий"></label>
+                <div class="modal-actions">
+                  <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+                  <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+              </form>
+            </div>
+          </div>
           {% endfor %}
         </ul>
       </details>
       {% endif %}
 
+      <!-- Модальное окно: Редактировать цель -->
+      <div class="modal" id="modal-edit-goal-{{ g.id }}" aria-hidden="true">
+        <div class="modal-backdrop" data-close></div>
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <h3 class="modal-title">Редактировать цель</h3>
+            <button type="button" class="btn-close" data-close aria-label="Закрыть">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <form method="post" action="{{ url_for('savings.edit_goal', goal_id=g.id) }}">
+            <label>Название цели <input type="text" name="name" value="{{ g.name }}" required></label>
+            <label>Категория
+              <select name="type">
+                <option value="want" {% if g.type == 'want' %}selected{% endif %}>Хотелка (гаджет, подарок, развлечение)</option>
+                <option value="reserve" {% if g.type == 'reserve' %}selected{% endif %}>Резерв (подушка безопасности)</option>
+                <option value="big" {% if g.type == 'big' %}selected{% endif %}>Крупная покупка (авто, жильё, ремонт)</option>
+              </select>
+            </label>
+            <label>Целевая сумма <input type="number" name="target_amount" step="0.01" value="{{ "%.2f"|format(g.target_amount|float) }}" required></label>
+            {{ currency_select('currency', g.goal_currency) }}
+            <label>Дедлайн (необязательно) <input type="date" name="deadline" value="{{ g.deadline or '' }}"></label>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+              <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <!-- Модальное окно: Пополнение цели -->
       <div class="modal" id="modal-deposit-{{ g.id }}" aria-hidden="true">
         <div class="modal-backdrop" data-close></div>
         <div class="modal-dialog">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-            <h3 style="margin-bottom: 0;">Пополнение — {{ g.name }}</h3>
-            <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+          <div class="modal-header">
+            <h3 class="modal-title">Пополнение — {{ g.name }}</h3>
+            <button type="button" class="btn-close" data-close aria-label="Закрыть">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
           </div>
           <form method="post" action="{{ url_for('savings.add_entry') }}">
             <input type="hidden" name="goal_id" value="{{ g.id }}">
@@ -122,11 +196,13 @@
       <div class="modal" id="modal-withdraw-{{ g.id }}" aria-hidden="true">
         <div class="modal-backdrop" data-close></div>
         <div class="modal-dialog">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-            <h3 style="margin-bottom: 0;">Снятие — {{ g.name }}</h3>
-            <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+          <div class="modal-header">
+            <h3 class="modal-title">Снятие — {{ g.name }}</h3>
+            <button type="button" class="btn-close" data-close aria-label="Закрыть">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
           </div>
-          <p class="muted" style="font-size: 0.85rem; margin-bottom: 1rem;">
+          <p class="muted font-sm" style="margin-bottom: 16px;">
             Доступно в копилке: <strong>{{ money(g.saved, g.goal_currency) }}</strong>
           </p>
           <form method="post" action="{{ url_for('savings.withdraw') }}">
@@ -172,9 +248,11 @@
 <div class="modal" id="modal-add-goal" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-      <h3 style="margin-bottom: 0;">Новая цель накопления</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Новая цель накопления</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <form method="post" action="{{ url_for('savings.add_goal') }}">
       <label>Название цели <input type="text" name="name" required placeholder="Например: Отпуск на море"></label>

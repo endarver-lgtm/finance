@@ -17,6 +17,7 @@ __pycache__/
 
 # Database & SQLite files
 *.db
+*.db.*
 *.db-journal
 *.db-shm
 *.db-wal

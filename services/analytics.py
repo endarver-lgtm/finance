@@ -232,7 +232,7 @@ def history_rows(
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT e.id, e.date, e.amount, e.currency, e.comment,
+                SELECT e.id, e.date, e.amount, e.currency, e.comment, e.source_id,
                        COALESCE(s.name, '{ONE_TIME_INCOME_LABEL}') AS label,
                        'income' AS kind
                 FROM income_entries e
@@ -252,7 +252,7 @@ def history_rows(
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT e.id, e.date, e.amount, e.currency, e.comment,
+                SELECT e.id, e.date, e.amount, e.currency, e.comment, e.category_id,
                        c.name AS label, 'expense' AS kind,
                        g.name AS from_goal_name
                 FROM budget_entries e
@@ -273,7 +273,7 @@ def history_rows(
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT e.id, e.date, e.amount, e.currency, e.comment,
+                SELECT e.id, e.date, e.amount, e.currency, e.comment, e.goal_id,
                        g.name AS label, e.kind AS entry_kind
                 FROM savings_entries e
                 JOIN savings_goals g ON g.id = e.goal_id
@@ -298,7 +298,7 @@ def history_rows(
         with get_db() as conn:
             for r in conn.execute(
                 f"""
-                SELECT d.id, d.date, d.amount, d.currency, d.comment,
+                SELECT d.id, d.date, d.amount, d.currency, d.comment, d.person,
                        d.person AS label, 'debt' AS kind, d.kind AS debt_kind
                 FROM debts d
                 WHERE {clause}

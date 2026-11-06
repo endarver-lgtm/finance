@@ -6,9 +6,12 @@ from services.progress import usage_percent
 from services.repository import (
     create_savings_entry,
     create_savings_goal,
+    delete_savings_goal,
     list_budget_categories,
     list_savings_goals,
     sum_savings_for_goal,
+    update_savings_entry,
+    update_savings_goal,
 )
 from services.savings import (
     delete_savings_entry,
@@ -106,3 +109,48 @@ def delete_entry_route(entry_id: int):
         flash(f"Ошибка при удалении: {e}", "error")
     return redirect(url_for("savings.index"))
 
+
+
+@bp.route("/goal/edit/<int:goal_id>", methods=["POST"])
+def edit_goal(goal_id: int):
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Укажите название цели", "error")
+        return redirect(request.referrer or url_for("savings.index"))
+    deadline = request.form.get("deadline", "").strip() or None
+    try:
+        update_savings_goal(
+            goal_id,
+            name,
+            parse_money("target_amount"),
+            parse_currency(),
+            deadline,
+            request.form.get("type", "want"),
+        )
+        flash("Цель обновлена", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("savings.index"))
+
+
+@bp.route("/goal/delete/<int:goal_id>", methods=["POST"])
+def delete_goal(goal_id: int):
+    try:
+        if delete_savings_goal(goal_id):
+            flash("Цель и её записи удалены", "success")
+        else:
+            flash("Цель не найдена", "error")
+    except Exception as e:
+        flash(f"Ошибка при удалении: {e}", "error")
+    return redirect(request.referrer or url_for("savings.index"))
+
+
+@bp.route("/entry/edit/<int:entry_id>", methods=["POST"])
+def edit_entry(entry_id: int):
+    try:
+        amount, entry_date, comment, currency = parse_entry_fields()
+        update_savings_entry(entry_id, amount, currency, entry_date, comment)
+        flash("Запись накоплений обновлена", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("savings.index"))

@@ -17,8 +17,12 @@ from services.progress import progress_color, usage_percent
 from services.repository import (
     create_budget_category,
     create_budget_entry,
+    delete_budget_category,
+    delete_budget_entry,
     list_budget_categories,
     sum_in_range_byn,
+    update_budget_category,
+    update_budget_entry,
 )
 
 bp = Blueprint("budget", __name__, url_prefix="/budget")
@@ -134,51 +138,86 @@ def add_category():
     return redirect(url_for("budget.index", period=request.form.get("view_period", "week")))
 
 
+@bp.route("/category/edit/<int:category_id>", methods=["POST"])
+def edit_category(category_id: int):
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Название категории не может быть пустым", "error")
+        return redirect(request.referrer or url_for("budget.index"))
+    try:
+        update_budget_category(
+            category_id,
+            name,
+            parse_money("planned_amount"),
+            request.form.get("period", "week"),
+            parse_currency(),
+        )
+        flash("Категория обновлена", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("budget.index"))
+
+
+@bp.route("/category/delete/<int:category_id>", methods=["POST"])
+def delete_category(category_id: int):
+    try:
+        if delete_budget_category(category_id):
+            flash("Категория удалена. Все расходы перенесены в Неучтёнку.", "success")
+        else:
+            flash("Категория не найдена", "error")
+    except ValueError as e:
+        flash(str(e), "error")
+    except Exception as e:
+        flash(f"Ошибка при удалении: {e}", "error")
+    return redirect(request.referrer or url_for("budget.index"))
+
+
 @bp.route("/entry/add", methods=["POST"])
 def add_entry():
     amount, entry_date, comment, currency = parse_entry_fields()
     period = request.form.get("period", "week")
-    split = request.form.get("split") in ("1", "true", "on", "yes")
-
     cat_id_raw = request.form.get("category_id")
     category_id = int(cat_id_raw) if cat_id_raw and cat_id_raw.isdigit() else None
 
-    if split:
-        from services.debts import add_split
+    if not category_id:
+        flash("Укажите категорию", "error")
+        return redirect(url_for("budget.index", period=period))
 
-        paid_by = request.form.get("paid_by", "me")
-        person = request.form.get("person", "").strip()
-        my_share_val = request.form.get("my_share")
-        if my_share_val is not None and my_share_val.strip() != "":
-            my_share = float(my_share_val)
-        else:
-            my_share = round(amount / 2.0, 2)
-        try:
-            add_split(
-                total_amount=amount,
-                currency=currency,
-                entry_date=entry_date,
-                paid_by=paid_by,
-                person=person,
-                my_share=my_share,
-                category_id=category_id,
-                comment=comment,
-            )
-            flash("Списание разделено и сохранено", "success")
-        except ValueError as e:
-            flash(str(e), "error")
-            return redirect(url_for("budget.index", period=period))
-    else:
+    create_budget_entry(
+        category_id,
+        amount,
+        entry_date,
+        comment,
+        currency,
+    )
+    flash("Списание записано", "success")
+    return redirect(request.referrer or url_for("budget.index", period=period))
+
+
+@bp.route("/entry/edit/<int:entry_id>", methods=["POST"])
+def edit_entry(entry_id: int):
+    try:
+        amount, entry_date, comment, currency = parse_entry_fields()
+        cat_id_raw = request.form.get("category_id")
+        category_id = int(cat_id_raw) if cat_id_raw and cat_id_raw.isdigit() else None
         if not category_id:
-            flash("Укажите категорию", "error")
-            return redirect(url_for("budget.index", period=period))
-        create_budget_entry(
-            category_id,
-            amount,
-            entry_date,
-            comment,
-            currency,
-        )
-        flash("Списание записано", "success")
+            flash("Выберите категорию", "error")
+            return redirect(request.referrer or url_for("budget.index"))
 
-    return redirect(url_for("budget.index", period=period))
+        update_budget_entry(entry_id, category_id, amount, currency, entry_date, comment)
+        flash("Расход обновлен", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("budget.index"))
+
+
+@bp.route("/entry/delete/<int:entry_id>", methods=["POST"])
+def delete_entry(entry_id: int):
+    try:
+        if delete_budget_entry(entry_id):
+            flash("Расход удален", "success")
+        else:
+            flash("Запись не найдена", "error")
+    except Exception as e:
+        flash(f"Ошибка при удалении: {e}", "error")
+    return redirect(request.referrer or url_for("budget.index"))

@@ -8,6 +8,7 @@ from services.debts import (
     delete_debt,
     list_debt_persons,
     list_debts,
+    update_debt,
 )
 from services.forms import parse_entry_fields
 
@@ -63,3 +64,16 @@ def delete_entry_route(debt_id: int):
     except Exception as e:
         flash(f"Ошибка при удалении: {e}", "error")
     return redirect(request.referrer or url_for("debts.index"))
+
+
+@bp.route("/entry/edit/<int:debt_id>", methods=["POST"])
+def edit_entry(debt_id: int):
+    try:
+        person = request.form.get("person", "").strip()
+        kind = request.form.get("kind", "").strip()
+        amount, entry_date, comment, currency = parse_entry_fields()
+        update_debt(debt_id, person, kind, amount, currency, entry_date, comment)
+        flash("Запись по долгу обновлена", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("debts.index", person=request.form.get("person")))

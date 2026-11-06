@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1013">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="AkselMoney">
+  <meta name="application-name" content="AkselMoney">
+  <meta name="format-detection" content="telephone=no">
+  <title>Вход — AkselMoney</title>
+  
+  <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}?v=4">
+  <link rel="icon" type="image/png" sizes="32x32" href="{{ url_for('static', filename='img/favicon-32.png') }}?v=4">
+  <link rel="icon" type="image/png" sizes="16x16" href="{{ url_for('static', filename='img/favicon-16.png') }}?v=4">
+  <link rel="apple-touch-icon" sizes="180x180" href="{{ url_for('static', filename='img/apple-touch-icon.png') }}?v=4">
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}?v=4">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --bg-color: #0f1013;
+      --card-bg: #18191e;
+      --text-main: #f0f1f5;
+      --text-muted: #8b8e9b;
+      --accent: #3b82f6;
+      --accent-glow: rgba(59, 130, 246, 0.35);
+      --key-bg: #1f2128;
+      --key-hover: #2a2c36;
+      --key-active: #353845;
+      --error-bg: rgba(239, 68, 68, 0.15);
+      --error-text: #f87171;
+      --border-color: #272a34;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      min-height: 100vh;
+      min-height: 100dvh;
+      width: 100%;
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: max(20px, env(safe-area-inset-top)) max(20px, env(safe-area-inset-right)) max(20px, env(safe-area-inset-bottom)) max(20px, env(safe-area-inset-left));
+    }
+
+    .pin-container {
+      width: 100%;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .app-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .brand-logo {
+      width: 62px;
+      height: 62px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 14px;
+    }
+
+    .brand-logo img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .brand-title {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      color: var(--text-main);
+    }
+
+    .brand-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .pin-dots {
+      display: flex;
+      gap: 18px;
+      margin: 16px 0 24px;
+    }
+
+    .pin-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      border: 2px solid var(--border-color);
+      background: transparent;
+      transition: all 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .pin-dot.filled {
+      background: var(--accent);
+      border-color: var(--accent);
+      box-shadow: 0 0 14px var(--accent-glow);
+      transform: scale(1.15);
+    }
+
+    .error-banner {
+      background: var(--error-bg);
+      color: var(--error-text);
+      font-size: 13px;
+      font-weight: 500;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      max-width: 100%;
+      animation: shake 0.4s ease-in-out;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+
+    .keypad {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      width: 100%;
+    }
+
+    .key {
+      height: 62px;
+      background: var(--key-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      font-size: 24px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+      transition: background 0.12s, transform 0.08s, border-color 0.12s;
+      font-family: 'JetBrains Mono', monospace;
+      outline: none;
+    }
+
+    .key:hover {
+      background: var(--key-hover);
+      border-color: rgba(255, 255, 255, 0.1);
+    }
+
+    .key:active {
+      background: var(--key-active);
+      transform: scale(0.94);
+    }
+
+    .key-action {
+      background: transparent;
+      border-color: transparent;
+      color: var(--text-muted);
+    }
+
+    .key-action:hover {
+      background: rgba(255, 255, 255, 0.04);
+      border-color: transparent;
+    }
+
+    .key-action:active {
+      background: rgba(255, 255, 255, 0.08);
+      transform: scale(0.94);
+    }
+
+    .key-action svg {
+      width: 24px;
+      height: 24px;
+    }
+  </style>
+</head>
+<body>
+  <div class="pin-container">
+    <div class="app-brand">
+      <div class="brand-logo">
+        <img src="{{ url_for('static', filename='img/logo.png') }}?v=4" alt="AkselMoney">
+      </div>
+      <h1 class="brand-title">AkselMoney</h1>
+      <p class="brand-subtitle">Введите PIN-код для входа</p>
+    </div>
+
+    {% if error %}
+    <div class="error-banner" id="error-msg">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="pin-dots" id="dots">
+      <div class="pin-dot"></div>
+      <div class="pin-dot"></div>
+      <div class="pin-dot"></div>
+      <div class="pin-dot"></div>
+    </div>
+
+    <!-- Hidden input with type="hidden": NEVER triggers virtual keyboard on mobile -->
+    <form id="pin-form" method="POST" action="{{ url_for('auth.login', next=request.args.get('next')) }}">
+      <input type="hidden" name="pin" id="hidden-pin" value="">
+    </form>
+
+    <div class="keypad">
+      <button type="button" class="key" data-digit="1">1</button>
+      <button type="button" class="key" data-digit="2">2</button>
+      <button type="button" class="key" data-digit="3">3</button>
+      <button type="button" class="key" data-digit="4">4</button>
+      <button type="button" class="key" data-digit="5">5</button>
+      <button type="button" class="key" data-digit="6">6</button>
+      <button type="button" class="key" data-digit="7">7</button>
+      <button type="button" class="key" data-digit="8">8</button>
+      <button type="button" class="key" data-digit="9">9</button>
+      <div class="key-action"></div>
+      <button type="button" class="key" data-digit="0">0</button>
+      <button type="button" class="key key-action" id="btn-backspace" aria-label="Удалить">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 4H8l-7 8 7 8h13a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2z"></path>
+          <line x1="18" y1="9" x2="12" y2="15"></line>
+          <line x1="12" y1="9" x2="18" y2="15"></line>
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    (function() {
+      // Standalone mode link navigation fix for iOS
+      if (window.navigator.standalone) {
+        document.addEventListener('click', function(e) {
+          let a = e.target.closest('a');
+          if (a && a.href && a.host === window.location.host && !a.target && !a.hasAttribute('download')) {
+            e.preventDefault();
+            window.location.href = a.href;
+          }
+        }, false);
+      }
+
+      let pin = "";
+      const dots = document.querySelectorAll(".pin-dot");
+      const form = document.getElementById("pin-form");
+      const hiddenInput = document.getElementById("hidden-pin");
+      let submitting = false;
+
+      function updateDots() {
+        dots.forEach((dot, idx) => {
+          if (idx < pin.length) {
+            dot.classList.add("filled");
+          } else {
+            dot.classList.remove("filled");
+          }
+        });
+      }
+
+      function addDigit(digit) {
+        if (submitting || pin.length >= 4) return;
+        pin += digit;
+        updateDots();
+        if (navigator.vibrate) {
+          try { navigator.vibrate(15); } catch(e) {}
+        }
+        if (pin.length === 4) {
+          submitting = true;
+          hiddenInput.value = pin;
+          setTimeout(() => {
+            form.submit();
+          }, 100);
+        }
+      }
+
+      function removeDigit() {
+        if (submitting || pin.length === 0) return;
+        pin = pin.slice(0, -1);
+        updateDots();
+        if (navigator.vibrate) {
+          try { navigator.vibrate(10); } catch(e) {}
+        }
+      }
+
+      // Keypad buttons: handle touch/pointer directly without focus
+      document.querySelectorAll(".key[data-digit]").forEach(btn => {
+        btn.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          addDigit(btn.dataset.digit);
+        });
+      });
+
+      const backspaceBtn = document.getElementById("btn-backspace");
+      if (backspaceBtn) {
+        backspaceBtn.addEventListener("pointerdown", (e) => {
+          e.preventDefault();
+          removeDigit();
+        });
+      }
+
+      // Physical keyboard support for desktop PC
+      window.addEventListener("keydown", (e) => {
+        if (e.key >= "0" && e.key <= "9") {
+          addDigit(e.key);
+        } else if (e.key === "Backspace") {
+          removeDigit();
+        }
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -4,7 +4,7 @@ from services.analytics import history_rows
 from services.constants import BASE_CURRENCY, HISTORY_KIND_LABELS
 from services.currency import to_byn
 from services.dates import format_date, parse_date
-from services.repository import list_history_category_names
+from services.repository import list_history_category_names, list_budget_categories, list_income_sources
 
 bp = Blueprint("history", __name__, url_prefix="/history")
 
@@ -51,6 +51,8 @@ def index():
         "history.html",
         rows=display_rows,
         categories=list_history_category_names(),
+        budget_categories=list_budget_categories(),
+        income_sources=list_income_sources(),
         filters={
             "date_from": date_from_s,
             "date_to": date_to_s,

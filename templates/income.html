@@ -1,18 +1,18 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import money, currency_select, period_switcher, empty_state with context %}
 
-{% block title %}Приходы — Финансы{% endblock %}
+{% block title %}Приходы — AkselMoney{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
     <h1>Приходы</h1>
-    <p class="muted" style="margin-top: 0.25rem;">Регулярные источники дохода и разовые поступления</p>
+    <p class="muted">Регулярные источники дохода и разовые поступления</p>
   </div>
   <div class="header-actions">
     {{ period_switcher(periods, period, url_for('income.index'), period_query) }}
-    <button type="button" class="btn btn-secondary" data-open="modal-one-time">+ Разовый доход</button>
-    <button type="button" class="btn btn-primary" data-open="modal-add-source">+ Новый источник</button>
+    <button type="button" class="btn btn-secondary" data-open="modal-one-time">Разовый доход</button>
+    <button type="button" class="btn btn-primary" data-open="modal-add-source">Новый источник</button>
   </div>
 </header>
 
@@ -21,7 +21,7 @@
     <span class="period-banner-label">Выбранный период</span>
     <strong class="period-banner-value">{{ period_caption }}</strong>
     {% if period == 'month' and month_nav and not month_nav.is_current %}
-    <span class="period-banner-hint">Просмотр архивного месяца · поступления фильтруются по датам этого интервала</span>
+    <span class="period-banner-hint">Архивный месяц · поступления фильтруются по датам этого интервала</span>
     {% elif period == 'month' %}
     <span class="period-banner-hint">Текущий месяц · при наступлении нового месяца счётчик обнуляется</span>
     {% endif %}
@@ -38,24 +38,47 @@
 </div>
 
 {% if sources or orphan_fact > 0 %}
-<div class="period-summary card">
-  <div>
-    <span class="stat-label">Итого план за период</span>
-    <span class="stat-value">{{ money(period_totals.planned) }}</span>
+{% set pct = ((period_totals.fact / period_totals.planned * 100) | round(1)) if period_totals.planned > 0 else 0 %}
+<div class="income-summary-grid">
+  <div class="period-summary card">
+    <div>
+      <span class="stat-label">Итого план за период</span>
+      <span class="stat-value">{{ money(period_totals.planned) }}</span>
+    </div>
+    <div>
+      <span class="stat-label">Итого факт за период</span>
+      <span class="stat-value text-accent">{{ money(period_totals.fact) }}</span>
+    </div>
   </div>
-  <div>
-    <span class="stat-label">Итого факт за период</span>
-    <span class="stat-value text-accent">{{ money(period_totals.fact) }}</span>
-  </div>
-  <div>
-    <span class="stat-label">Выполнение</span>
-    <span class="stat-value" style="color: {% if period_totals.planned > 0 and period_totals.fact >= period_totals.planned %}var(--accent-dim){% else %}var(--dark){% endif %};">
-      {% if period_totals.planned > 0 %}
-      {{ (period_totals.fact / period_totals.planned * 100) | round(1) }}%
-      {% else %}
-      —
-      {% endif %}
-    </span>
+
+  <div class="card income-progress-card">
+    <div class="income-progress-head">
+      <div>
+        <span class="stat-label">Выполнение</span>
+        <div class="income-progress-val">
+          <span class="income-pct-huge">{{ pct }}%</span>
+          <span class="income-pct-sub">от планового прихода</span>
+        </div>
+      </div>
+      <span class="badge {% if pct >= 100 %}badge-ok{% elif pct >= 50 %}badge-warning{% else %}badge-pending{% endif %}">
+        {% if pct >= 100 %}План выполнен{% elif pct > 0 %}{{ pct }}% получено{% else %}Ожидает поступлений{% endif %}
+      </span>
+    </div>
+
+    <!-- Бегущая строка прогресса с динамической шкалой -->
+    <div class="income-progress-track" title="Собрано {{ pct }}%">
+      <div class="income-progress-fill" style="width: {{ [pct, 100]|min }}%;">
+        <span class="income-progress-runner"></span>
+      </div>
+    </div>
+
+    <div class="income-progress-scale">
+      <span>0%</span>
+      <span>25%</span>
+      <span>50%</span>
+      <span>75%</span>
+      <span>100%</span>
+    </div>
   </div>
 </div>
 {% endif %}
@@ -64,14 +87,26 @@
 <div class="cards-grid">
   {% for s in sources %}
   <article class="card source-card {% if s.type == 'regular' %}source-card--regular{% endif %}">
-    <div>
+    <div class="source-card-content">
       <div class="card-top">
-        <h3>{{ s.name }}</h3>
-        <span class="badge {% if s.status == 'received' %}badge-ok{% elif s.status == 'partial' %}badge-pending{% else %}badge-muted{% endif %}">
-          {% if s.status == 'received' %}✓ Получено{% elif s.status == 'partial' %}Частично{% else %}Ожидается{% endif %}
+        <div class="card-top-title">
+          <h3>{{ s.name }}</h3>
+          <div class="item-actions">
+            <button type="button" class="btn-icon-subtle" data-open="modal-edit-source-{{ s.id }}" title="Редактировать источник">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            <form method="post" action="{{ url_for('income.delete_source', source_id=s.id) }}" onsubmit="return confirm('Удалить источник «{{ s.name }}»? Все поступления сохранятся как разовые.');">
+              <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить источник">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </form>
+          </div>
+        </div>
+        <span class="badge {% if s.status == 'received' %}badge-ok{% elif s.status == 'partial' %}badge-warning{% else %}badge-muted{% endif %}">
+          {{ 'Получено' if s.status == 'received' else ('Частично' if s.status == 'partial' else 'Ожидается') }}
         </span>
       </div>
-      <p class="muted" style="margin-bottom: 0.75rem;">{{ type_labels[s.type] }} · {{ freq_labels[s.frequency] }}</p>
+      <p class="muted font-sm">{{ type_labels[s.type] }} · {{ freq_labels[s.frequency] }}</p>
 
       <div class="source-stats">
         <div>
@@ -83,20 +118,80 @@
           <span class="stat-value text-accent">{{ money(s.fact, s.fact_currency) }}</span>
         </div>
       </div>
+
+      {% if s.entries %}
+      <details class="history-details">
+        <summary class="history-summary">
+          Поступления ({{ s.entries|length }}) на {{ money(s.fact, s.fact_currency) }}
+        </summary>
+        <ul class="history-list">
+          {% for e in s.entries %}
+          <li class="history-row">
+            <div class="history-row-left">
+              <span class="history-desc">
+                <span class="history-date">{{ e.date[8:] }}.{{ e.date[5:7] }}</span>
+                {% if e.comment %}<span class="muted">{{ e.comment }}</span>{% endif %}
+              </span>
+            </div>
+            <div class="history-row-right">
+              <span class="history-sum text-accent">+{{ money(e.amount, e.currency) }}</span>
+              <div class="item-actions">
+                <button type="button" class="btn-icon-subtle" data-open="modal-edit-income-{{ e.id }}" title="Редактировать поступление">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
+                <form method="post" action="{{ url_for('income.delete_entry', entry_id=e.id) }}" onsubmit="return confirm('Удалить это поступление ({{ e.amount }} {{ e.currency }})?');">
+                  <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить поступление">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  </button>
+                </form>
+              </div>
+            </div>
+          </li>
+
+          <!-- Модальное окно: Редактирование поступления -->
+          <div class="modal" id="modal-edit-income-{{ e.id }}" aria-hidden="true">
+            <div class="modal-backdrop" data-close></div>
+            <div class="modal-dialog">
+              <div class="modal-header">
+                <h3 class="modal-title">Редактировать поступление</h3>
+                <button type="button" class="btn-close" data-close aria-label="Закрыть">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              <form method="post" action="{{ url_for('income.edit_entry', entry_id=e.id) }}">
+                <input type="hidden" name="source_id" value="{{ s.id }}">
+                <label>Сумма <input type="number" name="amount" step="0.01" value="{{ "%.2f"|format(e.amount|float) }}" required></label>
+                {{ currency_select('currency', e.currency) }}
+                <label>Дата <input type="date" name="date" value="{{ e.date }}" required></label>
+                <label>Комментарий <input type="text" name="comment" value="{{ e.comment or '' }}" placeholder="Комментарий"></label>
+                <div class="modal-actions">
+                  <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+                  <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+              </form>
+            </div>
+          </div>
+          {% endfor %}
+        </ul>
+      </details>
+      {% endif %}
     </div>
 
     {% if s.active %}
     <button type="button" class="btn btn-primary btn-block" data-open="modal-receive-{{ s.id }}">
-      <span>+</span> Отметить поступление
+      Отметить поступление
     </button>
     {% endif %}
 
+    <!-- Модальное окно: Поступление -->
     <div class="modal" id="modal-receive-{{ s.id }}" aria-hidden="true">
       <div class="modal-backdrop" data-close></div>
       <div class="modal-dialog">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-          <h3 style="margin-bottom: 0;">Поступление — {{ s.name }}</h3>
-          <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+        <div class="modal-header">
+          <h3 class="modal-title">Поступление — {{ s.name }}</h3>
+          <button type="button" class="btn-close" data-close aria-label="Закрыть">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
         <form method="post" action="{{ url_for('income.add_entry') }}">
           <input type="hidden" name="source_id" value="{{ s.id }}">
@@ -114,6 +209,41 @@
         </form>
       </div>
     </div>
+
+    <!-- Модальное окно: Редактировать источник -->
+    <div class="modal" id="modal-edit-source-{{ s.id }}" aria-hidden="true">
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">Редактировать источник</h3>
+          <button type="button" class="btn-close" data-close aria-label="Закрыть">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <form method="post" action="{{ url_for('income.edit_source', source_id=s.id) }}">
+          <label>Название источника <input type="text" name="name" value="{{ s.name }}" required></label>
+          <label>Тип
+            <select name="type">
+              <option value="regular" {% if s.type == 'regular' %}selected{% endif %}>Регулярный</option>
+              <option value="one_time" {% if s.type == 'one_time' %}selected{% endif %}>Разовый проект</option>
+            </select>
+          </label>
+          <label>Плановая сумма <input type="number" name="planned_amount" step="0.01" value="{{ "%.2f"|format(s.planned_amount|float) }}" required></label>
+          {{ currency_select('currency', s.planned_currency) }}
+          <label>Периодичность
+            <select name="frequency">
+              <option value="monthly" {% if s.frequency == 'monthly' %}selected{% endif %}>Ежемесячно</option>
+              <option value="weekly" {% if s.frequency == 'weekly' %}selected{% endif %}>Еженедельно</option>
+              <option value="one_time" {% if s.frequency == 'one_time' %}selected{% endif %}>Разово</option>
+            </select>
+          </label>
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </article>
   {% endfor %}
 </div>
@@ -122,20 +252,76 @@
 {% endif %}
 
 {% if orphan_fact > 0 %}
-<article class="card source-card source-card--orphan">
+<article class="card source-card source-card--orphan" style="margin-top: 24px;">
   <div class="card-top">
     <div>
       <h3>Разовые поступления</h3>
-      <p class="muted">Доходы без привязки к постоянному источнику</p>
+      <p class="muted font-sm">Доходы без привязки к постоянному источнику</p>
     </div>
     <span class="badge badge-ok">Поступило</span>
   </div>
-  <div class="source-stats" style="grid-template-columns: 1fr;">
+  <div class="source-stats source-stats--single">
     <div>
       <span class="stat-label">Сумма за период</span>
       <span class="stat-value text-accent">{{ money(orphan_fact) }}</span>
     </div>
   </div>
+
+  {% if orphan_entries %}
+  <details class="history-details">
+    <summary class="history-summary">
+      Поступления ({{ orphan_entries|length }}) на {{ money(orphan_fact) }}
+    </summary>
+    <ul class="history-list">
+      {% for e in orphan_entries %}
+      <li class="history-row">
+        <div class="history-row-left">
+          <span class="history-desc">
+            <span class="history-date">{{ e.date[8:] }}.{{ e.date[5:7] }}</span>
+            {% if e.comment %}<span class="muted">{{ e.comment }}</span>{% endif %}
+          </span>
+        </div>
+        <div class="history-row-right">
+          <span class="history-sum text-accent">+{{ money(e.amount, e.currency) }}</span>
+          <div class="item-actions">
+            <button type="button" class="btn-icon-subtle" data-open="modal-edit-income-{{ e.id }}" title="Редактировать поступление">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            <form method="post" action="{{ url_for('income.delete_entry', entry_id=e.id) }}" onsubmit="return confirm('Удалить это поступление ({{ e.amount }} {{ e.currency }})?');">
+              <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить поступление">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </form>
+          </div>
+        </div>
+      </li>
+
+      <!-- Модальное окно: Редактирование разового поступления -->
+      <div class="modal" id="modal-edit-income-{{ e.id }}" aria-hidden="true">
+        <div class="modal-backdrop" data-close></div>
+        <div class="modal-dialog">
+          <div class="modal-header">
+            <h3 class="modal-title">Редактировать поступление</h3>
+            <button type="button" class="btn-close" data-close aria-label="Закрыть">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </button>
+          </div>
+          <form method="post" action="{{ url_for('income.edit_entry', entry_id=e.id) }}">
+            <label>Сумма <input type="number" name="amount" step="0.01" value="{{ "%.2f"|format(e.amount|float) }}" required></label>
+            {{ currency_select('currency', e.currency) }}
+            <label>Дата <input type="date" name="date" value="{{ e.date }}" required></label>
+            <label>Комментарий <input type="text" name="comment" value="{{ e.comment or '' }}" placeholder="Комментарий"></label>
+            <div class="modal-actions">
+              <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+              <button type="submit" class="btn btn-primary">Сохранить</button>
+            </div>
+          </form>
+        </div>
+      </div>
+      {% endfor %}
+    </ul>
+  </details>
+  {% endif %}
 </article>
 {% endif %}
 
@@ -143,11 +329,13 @@
 <div class="modal" id="modal-add-source" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-      <h3 style="margin-bottom: 0;">Новый источник дохода</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Новый источник дохода</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
-    <p class="muted" style="margin-bottom: 1.25rem;">Ретейнер/оклад — «ежемесячно». Разовый проект — «разово» с отметкой каждого платежа.</p>
+    <p class="muted font-sm" style="margin-bottom: 16px;">Ретейнер/оклад — «ежемесячно». Разовый проект — «разово» с отметкой каждого платежа.</p>
     <form method="post" action="{{ url_for('income.add_source') }}">
       <input type="hidden" name="period" value="{{ period }}">
       <input type="hidden" name="year" value="{{ ref_year }}">
@@ -180,9 +368,11 @@
 <div class="modal" id="modal-one-time" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-      <h3 style="margin-bottom: 0;">Разовый доход</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Разовый доход</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <form method="post" action="{{ url_for('income.add_one_time') }}">
       <input type="hidden" name="period" value="{{ period }}">

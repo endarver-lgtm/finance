@@ -1,26 +1,26 @@
 {% extends 'base.html' %}
 {% from 'macros.html' import money, currency_select, period_switcher, empty_state with context %}
 
-{% block title %}Бюджет — Финансы{% endblock %}
+{% block title %}Бюджет — AkselMoney{% endblock %}
 
 {% block content %}
 <header class="page-header">
   <div>
     <h1>Бюджет</h1>
-    <p class="muted" style="margin-top: 0.25rem;">Конверты расходов с лимитами на неделю или месяц</p>
+    <p class="muted">Конверты расходов с лимитами на неделю или месяц</p>
   </div>
   <div class="header-actions">
     {{ period_switcher(periods, period, url_for('budget.index')) }}
-    <button type="button" class="btn btn-primary" data-open="modal-add-category">+ Новая категория</button>
+    <button type="button" class="btn btn-primary" data-open="modal-add-category">Новая категория</button>
   </div>
 </header>
 
-<div class="period-banner card" style="margin-bottom: 1.5rem;">
+<div class="period-banner card">
   <div class="period-banner-main">
     <span class="period-banner-label">Выбранный интервал</span>
     <strong class="period-banner-value">{{ period_caption }}</strong>
     {% if not nav.is_current %}
-    <span class="period-banner-hint">Просмотр архивного периода · чеки отфильтрованы строго по датам этого интервала</span>
+    <span class="period-banner-hint">Архивный период · чеки отфильтрованы по датам этого интервала</span>
     {% else %}
     <span class="period-banner-hint">Текущий {{ 'недельный' if period == 'week' else 'месячный' }} интервал</span>
     {% endif %}
@@ -40,24 +40,39 @@
 <div class="cards-grid">
   {% for c in categories %}
   <article class="card budget-card {% if c.track_only or c.is_system or c.name == 'Неучтёнка' %}budget-card--unaccounted{% endif %}">
-    <div>
+    <div class="budget-card-content">
       <div class="card-top">
-        <h3>{{ c.name }}</h3>
+        <div class="card-top-title">
+          <h3>{{ c.name }}</h3>
+          <div class="item-actions">
+            <button type="button" class="btn-icon-subtle" data-open="modal-edit-cat-{{ c.id }}" title="Редактировать конверт">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            {% if not c.track_only and not c.is_system and c.name != 'Неучтёнка' %}
+            <form method="post" action="{{ url_for('budget.delete_category', category_id=c.id) }}" onsubmit="return confirm('Удалить конверт «{{ c.name }}»? Все расходы перейдут в Неучтёнку.');">
+              <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить конверт">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+              </button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
         {% if c.track_only %}
-        <span class="badge badge-unaccounted">Без лимита</span>
+        <span class="badge badge-muted">Без лимита</span>
         {% else %}
-        <span class="badge {% if c.pct >= 100 %}badge-danger{% elif c.pct >= 80 %}badge-pending{% else %}badge-ok{% endif %}">
+        <span class="badge {% if c.pct >= 100 %}badge-danger{% elif c.pct >= 80 %}badge-warning{% else %}badge-ok{% endif %}">
           {{ c.pct }}% лимита
         </span>
         {% endif %}
       </div>
+
       {% if not c.track_only %}
-      <p class="muted">Лимит на {{ 'неделю' if period == 'week' else 'месяц' }}: {{ money(c.planned_period, c.planned_currency) }}</p>
+      <p class="muted font-sm">Лимит на {{ 'неделю' if period == 'week' else 'месяц' }}: {{ money(c.planned_period, c.planned_currency) }}</p>
 
       <div class="budget-stats">
         <div>
           <span class="stat-label">Потрачено</span>
-          <span class="stat-value" style="color: {% if c.pct >= 100 %}var(--danger){% else %}var(--dark){% endif %};">
+          <span class="stat-value {% if c.pct >= 100 %}text-danger{% endif %}">
             {{ money(c.spent, c.spent_currency) }}
           </span>
         </div>
@@ -68,11 +83,11 @@
       </div>
 
       <div class="progress-track">
-        <div class="progress-fill {{ c.color }}" style="width: {{ [c.pct, 100]|min }}%"></div>
+        <div class="progress-fill {% if c.pct >= 100 %}progress-fill--danger{% elif c.pct >= 80 %}progress-fill--warning{% else %}progress-fill--ok{% endif %}" style="width: {{ [c.pct, 100]|min }}%"></div>
       </div>
       {% else %}
-      <p class="muted" style="margin-bottom: 0.75rem;">Фиксация неучтённых трат при сверках</p>
-      <div class="budget-stats" style="grid-template-columns: 1fr; margin-bottom: 1.25rem;">
+      <p class="muted font-sm">Фиксация неучтённых трат при сверках</p>
+      <div class="budget-stats budget-stats--single">
         <div>
           <span class="stat-label">Потрачено за период</span>
           <span class="stat-value text-danger">{{ money(c.spent, c.spent_currency) }}</span>
@@ -81,19 +96,69 @@
       {% endif %}
 
       {% if c.entries %}
-      <details class="history-details" style="margin-top: 0.85rem; padding-top: 0.6rem; border-top: 1px dashed var(--border);">
-        <summary style="font-size: 0.78rem; font-weight: 600; color: var(--muted); cursor: pointer; user-select: none;">
+      <details class="history-details">
+        <summary class="history-summary">
           Чеки периода ({{ c.entries|length }}) на {{ money(c.spent, c.spent_currency) }}
         </summary>
-        <ul class="history-list" style="margin-top: 0.5rem; font-size: 0.8rem; gap: 0.35rem;">
+        <ul class="history-list">
           {% for e in c.entries %}
-          <li style="display: flex; justify-content: space-between; align-items: center; padding: 0.25rem 0; border-bottom: 1px dashed #f1f5f9;">
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 65%;">
-              <strong style="font-family: var(--font-mono); font-size: 0.75rem;">{{ e.date[8:] }}.{{ e.date[5:7] }}</strong>
-              {% if e.comment %}<span class="muted" style="margin-left: 0.35rem;">{{ e.comment }}</span>{% endif %}
-            </span>
-            <span style="font-weight: 700; font-family: var(--font-mono);">{{ money(e.amount, e.currency) }}</span>
+          <li class="history-row">
+            <div class="history-row-left">
+              <span class="history-desc">
+                <span class="history-date">{{ e.date[8:] }}.{{ e.date[5:7] }}</span>
+                {% if e.comment %}<span class="muted">{{ e.comment }}</span>{% endif %}
+              </span>
+            </div>
+            <div class="history-row-right">
+              <span class="history-sum">{{ money(e.amount, e.currency) }}</span>
+              <div class="item-actions">
+                <button type="button" class="btn-icon-subtle" data-open="modal-edit-entry-{{ e.id }}" title="Редактировать расход">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
+                <form method="post" action="{{ url_for('budget.delete_entry', entry_id=e.id) }}" onsubmit="return confirm('Удалить этот расход ({{ e.amount }} {{ e.currency }})?');">
+                  <button type="submit" class="btn-icon-subtle btn-icon-subtle--danger" title="Удалить расход">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  </button>
+                </form>
+              </div>
+            </div>
           </li>
+
+          <!-- Модальное окно: Редактирование расхода -->
+          <div class="modal" id="modal-edit-entry-{{ e.id }}" aria-hidden="true">
+            <div class="modal-backdrop" data-close></div>
+            <div class="modal-dialog">
+              <div class="modal-header">
+                <h3 class="modal-title">Редактировать расход</h3>
+                <button type="button" class="btn-close" data-close aria-label="Закрыть">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              <form method="post" action="{{ url_for('budget.edit_entry', entry_id=e.id) }}">
+                <label>Сумма расхода
+                  <input type="number" name="amount" step="0.01" value="{{ "%.2f"|format(e.amount|float) }}" required>
+                </label>
+                {{ currency_select('currency', e.currency) }}
+                <label>Конверт
+                  <select name="category_id">
+                    {% for cat_opt in categories %}
+                    <option value="{{ cat_opt.id }}" {% if cat_opt.id == c.id %}selected{% endif %}>{{ cat_opt.name }}</option>
+                    {% endfor %}
+                  </select>
+                </label>
+                <label>Дата
+                  <input type="date" name="date" value="{{ e.date }}" required>
+                </label>
+                <label>Комментарий
+                  <input type="text" name="comment" value="{{ e.comment or '' }}" placeholder="Комментарий">
+                </label>
+                <div class="modal-actions">
+                  <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+                  <button type="submit" class="btn btn-primary">Сохранить</button>
+                </div>
+              </form>
+            </div>
+          </div>
           {% endfor %}
         </ul>
       </details>
@@ -101,49 +166,26 @@
     </div>
 
     <button type="button" class="btn {% if c.track_only or c.is_system or c.name == 'Неучтёнка' %}btn-secondary{% else %}btn-primary{% endif %} btn-block" data-open="modal-spend-{{ c.id }}">
-      <span>−</span> Списать расход
+      Списать расход
     </button>
 
     <!-- Модальное окно: Списание по категории -->
     <div class="modal" id="modal-spend-{{ c.id }}" aria-hidden="true">
       <div class="modal-backdrop" data-close></div>
       <div class="modal-dialog">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-          <h3 style="margin-bottom: 0;">Списание — {{ c.name }}</h3>
-          <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+        <div class="modal-header">
+          <h3 class="modal-title">Списание — {{ c.name }}</h3>
+          <button type="button" class="btn-close" data-close aria-label="Закрыть">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
         </div>
         <form method="post" action="{{ url_for('budget.add_entry') }}">
           <input type="hidden" name="category_id" value="{{ c.id }}">
           <input type="hidden" name="period" value="{{ period }}">
-          <label>Сумма расхода <input type="number" name="amount" step="0.01" required placeholder="0.00" oninput="const form = this.closest('form'); const myInput = form.querySelector('[name=my_share]'); const hisInput = form.querySelector('.his-share-val'); const tot = parseFloat(this.value) || 0; if (myInput && (!myInput.value || myInput.dataset.auto === 'true')) { const half = (tot / 2).toFixed(2); myInput.value = half; myInput.dataset.auto = 'true'; if (hisInput) hisInput.value = (tot - half).toFixed(2); }"></label>
+          <label>Сумма расхода <input type="number" name="amount" step="0.01" required placeholder="0.00"></label>
           {{ currency_select() }}
           <label>Дата <input type="date" name="date" value="{{ today.isoformat() }}" required></label>
-          <label>Комментарий <input type="text" name="comment" placeholder="Например: покупка продуктов в Euroopt"></label>
-
-          <label style="display: flex; align-items: center; gap: 0.5rem; margin: 0.75rem 0; cursor: pointer;">
-            <input type="checkbox" name="split" value="1" onchange="const box = document.getElementById('split-box-{{ c.id }}'); box.style.display = this.checked ? 'block' : 'none'; const form = this.closest('form'); const tot = parseFloat(form.querySelector('[name=amount]').value) || 0; const myInput = form.querySelector('[name=my_share]'); const hisInput = form.querySelector('.his-share-val'); if (this.checked && !myInput.value) { const half = (tot / 2).toFixed(2); myInput.value = half; myInput.dataset.auto = 'true'; if (hisInput) hisInput.value = (tot - half).toFixed(2); }">
-            <strong>Разделить с другим</strong>
-          </label>
-
-          <div id="split-box-{{ c.id }}" style="display: none; background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem; margin-bottom: 0.75rem;">
-            <label>Кто платил
-              <select name="paid_by">
-                <option value="me" selected>Я заплатил</option>
-                <option value="him">Он заплатил</option>
-              </select>
-            </label>
-            <label>Человек
-              <input type="text" name="person" value="Кент" placeholder="Имя человека">
-            </label>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem;">
-              <label>Моя доля
-                <input type="number" name="my_share" step="0.01" placeholder="0.00" oninput="this.dataset.auto = 'false'; const form = this.closest('form'); const tot = parseFloat(form.querySelector('[name=amount]').value) || 0; const my = parseFloat(this.value) || 0; form.querySelector('.his-share-val').value = (tot - my).toFixed(2);">
-              </label>
-              <label>Его доля
-                <input type="text" class="his-share-val" readonly placeholder="0.00" style="background: #e2e8f0; color: #475569;">
-              </label>
-            </div>
-          </div>
+          <label>Комментарий <input type="text" name="comment" placeholder="Например: покупка продуктов"></label>
 
           <div class="modal-actions">
             <button type="button" class="btn btn-secondary" data-close>Отмена</button>
@@ -152,20 +194,60 @@
         </form>
       </div>
     </div>
+
+    <!-- Модальное окно: Редактирование конверта -->
+    <div class="modal" id="modal-edit-cat-{{ c.id }}" aria-hidden="true">
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-dialog">
+        <div class="modal-header">
+          <h3 class="modal-title">Редактировать конверт</h3>
+          <button type="button" class="btn-close" data-close aria-label="Закрыть">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+        <form method="post" action="{{ url_for('budget.edit_category', category_id=c.id) }}">
+          <label>Название конверта
+            <input type="text" name="name" value="{{ c.name }}" required {% if c.track_only or c.is_system or c.name == 'Неучтёнка' %}readonly title="Имя системного конверта фиксировано"{% endif %}>
+          </label>
+          {% if not c.track_only %}
+          <label>Плановый лимит
+            <input type="number" name="planned_amount" step="0.01" value="{{ c.planned_amount }}" required>
+          </label>
+          {{ currency_select('currency', c.currency) }}
+          <label>Период лимита
+            <select name="period">
+              <option value="week" {% if c.period == 'week' %}selected{% endif %}>Неделя (каждую неделю новый лимит)</option>
+              <option value="month" {% if c.period == 'month' %}selected{% endif %}>Месяц (лимит на календарный месяц)</option>
+            </select>
+          </label>
+          {% else %}
+          <input type="hidden" name="planned_amount" value="0">
+          <input type="hidden" name="period" value="{{ c.period|default('week') }}">
+          <input type="hidden" name="currency" value="{{ c.currency|default('BYN') }}">
+          {% endif %}
+          <div class="modal-actions">
+            <button type="button" class="btn btn-secondary" data-close>Отмена</button>
+            <button type="submit" class="btn btn-primary">Сохранить</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </article>
   {% endfor %}
 </div>
 {% else %}
-{{ empty_state('Нет категорий бюджета', 'Создайте конверты: Продукты, Транспорт, Кафе, Подписки и задайте лимиты трат', 'Добавить категорию', 'modal-add-category') }}
+{{ empty_state('Нет категорий бюджета', 'Создайте конверты расходов и задайте лимиты трат', 'Добавить категорию', 'modal-add-category') }}
 {% endif %}
 
 <!-- Модальное окно: Создание категории -->
 <div class="modal" id="modal-add-category" aria-hidden="true">
   <div class="modal-backdrop" data-close></div>
   <div class="modal-dialog">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-      <h3 style="margin-bottom: 0;">Новая категория расходов</h3>
-      <button type="button" style="background: none; border: none; font-size: 1.5rem; cursor: pointer; color: var(--muted);" data-close>&times;</button>
+    <div class="modal-header">
+      <h3 class="modal-title">Новая категория расходов</h3>
+      <button type="button" class="btn-close" data-close aria-label="Закрыть">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+      </button>
     </div>
     <form method="post" action="{{ url_for('budget.add_category') }}">
       <input type="hidden" name="view_period" value="{{ period }}">

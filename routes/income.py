@@ -16,8 +16,13 @@ from services.progress import income_status
 from services.repository import (
     create_income_entry,
     create_income_source,
+    delete_income_entry,
+    delete_income_source,
     list_income_sources_with_fact,
+    list_orphan_income_entries,
     sum_orphan_income_byn,
+    update_income_entry,
+    update_income_source,
 )
 
 bp = Blueprint("income", __name__, url_prefix="/income")
@@ -66,6 +71,7 @@ def index():
 
     labels, plan, fact = income_by_months(last_n_months(6, date.today()))
     orphan_fact = sum_orphan_income_byn(start, end)
+    orphan_entries = list_orphan_income_entries(start, end)
     period_totals = {
         "planned": round(
             sum(to_byn(c["planned_period"], c.get("planned_currency", "BYN")) for c in cards),
@@ -105,6 +111,7 @@ def index():
         month_nav=month_nav,
         sources=cards,
         orphan_fact=orphan_fact,
+        orphan_entries=orphan_entries,
         period_totals=period_totals,
         period_query=(
             f"&year={ref.year}&month={ref.month}" if period == "month" else ""
@@ -167,3 +174,61 @@ def _period_ref_from_form() -> date:
     if year and month and 1 <= month <= 12:
         return date(year, month, 1)
     return today
+
+
+@bp.route("/source/edit/<int:source_id>", methods=["POST"])
+def edit_source(source_id: int):
+    name = request.form.get("name", "").strip()
+    if not name:
+        flash("Укажите название источника", "error")
+        return redirect(request.referrer or url_for("income.index"))
+    try:
+        update_income_source(
+            source_id,
+            name,
+            parse_money("planned_amount"),
+            parse_currency(),
+            request.form.get("type", "regular"),
+            request.form.get("frequency", "monthly"),
+        )
+        flash("Источник обновлен", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("income.index"))
+
+
+@bp.route("/source/delete/<int:source_id>", methods=["POST"])
+def delete_source(source_id: int):
+    try:
+        if delete_income_source(source_id):
+            flash("Источник удален. Поступления сохранены как разовые.", "success")
+        else:
+            flash("Источник не найден", "error")
+    except Exception as e:
+        flash(f"Ошибка при удалении: {e}", "error")
+    return redirect(request.referrer or url_for("income.index"))
+
+
+@bp.route("/entry/edit/<int:entry_id>", methods=["POST"])
+def edit_entry(entry_id: int):
+    try:
+        amount, entry_date, comment, currency = parse_entry_fields()
+        src_raw = request.form.get("source_id")
+        source_id = int(src_raw) if src_raw and src_raw.isdigit() else None
+        update_income_entry(entry_id, source_id, amount, currency, entry_date, comment)
+        flash("Поступление обновлено", "success")
+    except Exception as e:
+        flash(f"Ошибка при обновлении: {e}", "error")
+    return redirect(request.referrer or url_for("income.index"))
+
+
+@bp.route("/entry/delete/<int:entry_id>", methods=["POST"])
+def delete_entry(entry_id: int):
+    try:
+        if delete_income_entry(entry_id):
+            flash("Поступление удалено", "success")
+        else:
+            flash("Запись не найдена", "error")
+    except Exception as e:
+        flash(f"Ошибка при удалении: {e}", "error")
+    return redirect(request.referrer or url_for("income.index"))
