@@ -191,6 +191,150 @@
         },
       });
     },
+    doughnut(ctx, labels, values, colors) {
+      const defaultColors = [
+        '#1b5e3f', '#2a8555', '#4aa374', '#79c29c', '#a8dfc2',
+        '#d4a373', '#e07a5f', '#3d5a80', '#98c1d9', '#6c757d'
+      ];
+      const total = values.reduce((a, b) => a + b, 0);
+      return new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: colors || defaultColors.slice(0, values.length),
+            borderWidth: 2,
+            borderColor: '#ffffff',
+            hoverOffset: 4,
+          }],
+        },
+        options: {
+          responsive: true,
+          cutout: '68%',
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                boxWidth: 10,
+                boxHeight: 10,
+                padding: 12,
+                font: { size: 11.5 },
+                usePointStyle: true,
+              },
+            },
+            tooltip: {
+              backgroundColor: '#1f1b16',
+              titleColor: '#efe9de',
+              bodyColor: '#efe9de',
+              padding: 10,
+              cornerRadius: 6,
+              callbacks: {
+                label: (ctx) => {
+                  const val = ctx.parsed;
+                  const pct = total > 0 ? ((val / total) * 100).toFixed(1) : '0';
+                  return `${ctx.label}: ${moneyLabel(val)} (${pct}%)`;
+                },
+              },
+            },
+          },
+        },
+      });
+    },
+    horizontalBar(ctx, labels, values, bgColors) {
+      return new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: bgColors || '#1b5e3f',
+            borderRadius: 5,
+            borderSkipped: false,
+          }],
+        },
+        options: {
+          indexAxis: 'y',
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#1f1b16',
+              titleColor: '#efe9de',
+              bodyColor: '#efe9de',
+              padding: 10,
+              cornerRadius: 6,
+              callbacks: {
+                label: (ctx) => moneyLabel(ctx.parsed.x),
+              },
+            },
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(31, 27, 22, 0.06)' },
+              ticks: {
+                font: { family: "'JetBrains Mono', monospace", size: 11 },
+                callback: (v) => `${v} BYN`,
+              },
+            },
+            y: {
+              grid: { display: false },
+              ticks: { font: { size: 12 } },
+            },
+          },
+        },
+      });
+    },
+    multiLine(ctx, labels, datasets) {
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels,
+          datasets,
+        },
+        options: {
+          responsive: true,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: {
+              position: 'bottom',
+              labels: {
+                boxWidth: 12,
+                boxHeight: 12,
+                padding: 16,
+                usePointStyle: true,
+              },
+            },
+            tooltip: {
+              backgroundColor: '#1f1b16',
+              titleColor: '#efe9de',
+              bodyColor: '#efe9de',
+              padding: 10,
+              cornerRadius: 6,
+              callbacks: {
+                label: (ctx) => `${ctx.dataset.label}: ${moneyLabel(ctx.parsed.y)}`,
+              },
+            },
+          },
+          scales: {
+            y: {
+              grid: { color: 'rgba(31, 27, 22, 0.06)' },
+              ticks: {
+                font: { family: "'JetBrains Mono', monospace", size: 11 },
+                callback: (v) => `${v} BYN`,
+              },
+            },
+            x: {
+              grid: { display: false },
+              ticks: { font: { size: 12 } },
+            },
+          },
+        },
+      });
+    },
   };
 
   /* --------------------------------------------------------------------------

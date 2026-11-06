@@ -24,6 +24,7 @@ def create_app():
     except Exception as e:
         app.logger.warning("Could not update exchange rates from NBRB: %s", e)
 
+    from routes.analytics import bp as analytics_bp
     from routes.auth import bp as auth_bp
     from routes.balance import bp as balance_bp
     from routes.budget import bp as budget_bp
@@ -45,6 +46,7 @@ def create_app():
     for bp in (
         auth_bp,
         dashboard_bp,
+        analytics_bp,
         income_bp,
         budget_bp,
         savings_bp,

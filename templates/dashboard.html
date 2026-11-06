@@ -9,8 +9,59 @@
     <h1>Дашборд</h1>
     <p class="muted">Сводка приходов, расходов и баланса за выбранный период</p>
   </div>
-  {{ period_switcher(periods, period, url_for('dashboard.index')) }}
+  <div class="page-header-actions">
+    <a href="{{ url_for('analytics.index') }}" class="btn btn-secondary btn-sm" title="Глубокая аналитика и тренды">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>Аналитика →</span>
+    </a>
+    {{ period_switcher(periods, period, url_for('dashboard.index')) }}
+  </div>
 </header>
+
+<!-- Полоса финансового здоровья -->
+<section class="health-ribbon card">
+  <div class="health-ribbon-item">
+    <span class="health-ribbon-label">Норма сбережений</span>
+    <div class="health-ribbon-val-row">
+      <strong class="health-ribbon-val {% if health.savings_rate_status == 'ok' %}text-accent{% elif health.savings_rate_status == 'danger' %}text-danger{% endif %}">{{ health.savings_rate }}%</strong>
+      <span class="badge {% if health.savings_rate_status == 'ok' %}badge-ok{% elif health.savings_rate_status == 'warning' %}badge-warning{% else %}badge-danger{% endif %}">{{ health.savings_rate_label }}</span>
+    </div>
+  </div>
+  <div class="health-ribbon-item">
+    <span class="health-ribbon-label">Подушка безопасности</span>
+    <div class="health-ribbon-val-row">
+      <strong class="health-ribbon-val">{{ health.runway_months }} мес.</strong>
+      <span class="badge {% if health.runway_status in ('ok', 'stellar') %}badge-ok{% elif health.runway_status == 'warning' %}badge-warning{% else %}badge-danger{% endif %}">{{ health.runway_label }}</span>
+    </div>
+  </div>
+  <div class="health-ribbon-item">
+    <span class="health-ribbon-label">Дисциплина бюджета</span>
+    <div class="health-ribbon-val-row">
+      <strong class="health-ribbon-val">{{ health.adherence_pct }}%</strong>
+      <span class="badge {% if health.adherence_status == 'ok' %}badge-ok{% else %}badge-warning{% endif %}">{{ health.in_limit_count }}/{{ health.total_envelopes }} в норме</span>
+    </div>
+  </div>
+  <div class="health-ribbon-item health-ribbon-item--action">
+    <a href="{{ url_for('analytics.index') }}" class="card-link font-sm">Подробный аудит →</a>
+  </div>
+</section>
+
+<!-- Быстрые инсайты -->
+{% if insights %}
+<section class="dashboard-insights-grid">
+  {% for ins in insights %}
+  <div class="insight-banner insight-banner--{{ ins.type }}">
+    <div class="insight-banner-body">
+      <strong>{{ ins.title }}:</strong>
+      <span>{{ ins.message }}</span>
+    </div>
+    {% if ins.link %}
+    <a href="{{ ins.link }}" class="insight-banner-link">{{ ins.link_text }} →</a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</section>
+{% endif %}
 
 <section class="kpi-grid">
   <article class="card kpi-card kpi-card--primary">

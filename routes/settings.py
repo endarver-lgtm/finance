@@ -29,6 +29,9 @@ def index():
         set_setting("savings_in_check", savings_in_check)
         set_setting("default_debt_person", default_person)
 
+        ai_api_key = request.form.get("ai_api_key", "").strip()
+        set_setting("ai_api_key", ai_api_key)
+
         flash("Настройки сохранены", "success")
         return redirect(url_for("settings.index"))
     return render_template(
@@ -39,8 +42,8 @@ def index():
         rates_nbrb_date=get_setting("rates_nbrb_date", ""),
         savings_in_check=get_setting("savings_in_check", "1"),
         default_debt_person=get_setting("default_debt_person", "Кент"),
+        ai_api_key=get_setting("ai_api_key", ""),
     )
-
 
 
 @bp.route("/sync-nbrb", methods=["POST"])

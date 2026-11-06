@@ -70,6 +70,17 @@
       </div>
     </label>
 
+    <div class="settings-separator"></div>
+
+    <h2>ИИ-Аналитик (Опционально)</h2>
+    <p class="muted font-sm" style="margin-bottom: 12px;">
+      Для генерации углублённых персональных отчётов нейросетью можно указать API-ключ (OpenRouter или Gemini). Если ключ не указан, работает встроенный эвристический фин-советник.
+    </p>
+    <label>API-ключ (OpenRouter / Gemini)
+      <input type="password" name="ai_api_key" value="{{ ai_api_key }}" placeholder="sk-or-v1-...">
+      <span class="form-hint">Безопасно сохраняется локально в конфигурации приложения</span>
+    </label>
+
     <div class="form-actions" style="margin-top: 24px;">
       <button type="submit" class="btn btn-primary btn-block">Сохранить настройки</button>
     </div>

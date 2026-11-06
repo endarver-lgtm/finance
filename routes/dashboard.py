@@ -9,6 +9,8 @@ from services.analytics import (
     envelope_progress,
     expenses_by_category,
     free_cash_flow,
+    generate_smart_insights,
+    health_metrics,
     income_by_months,
     income_fact,
     savings_total,
@@ -61,6 +63,9 @@ def index():
         days_ago = None
         chk_text = "Сверок ещё не было"
 
+    hm = health_metrics(start, end, ref)
+    insights = generate_smart_insights(ref)
+
     return render_template(
         "dashboard.html",
         period=period,
@@ -84,9 +89,10 @@ def index():
             "days_ago": days_ago,
             "text": chk_text,
         },
+        health=hm,
+        insights=insights[:2],
         expense_chart=expenses_by_category(chart_start, chart_end),
         income_chart={"labels": labels, "plan": plan_series, "fact": fact_series},
         envelopes=envelope_progress("week", ref),
         upcoming=upcoming_income(ref),
     )
-
